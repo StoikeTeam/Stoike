@@ -231,6 +231,11 @@
                     <label class="block font-label-sm text-on-surface-variant mb-1" data-i18n="auth.password">Password</label>
                     <input id="auth-password" required class="w-full bg-black/50 border border-outline-variant/30 rounded px-4 py-3 text-white focus:border-primary-container focus:ring-0 outline-none transition-colors" type="password" placeholder="••••••••" />
                 </div>
+                <div id="auth-forgot-password-container" class="flex justify-end -mt-2">
+                    <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-primary-container hover:underline transition-all">
+                        Password dimenticata?
+                    </button>
+                </div>
                 <button type="submit" id="auth-submit-btn" class="w-full py-3 mt-2 bg-primary-container text-black font-label-md text-label-md rounded hover:bg-primary transition-colors flex justify-center items-center gap-2">
                     <span class="material-symbols-outlined">login</span> <span id="auth-btn-text" data-i18n="auth.submit.login">Accedi</span>
                 </button>

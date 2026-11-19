@@ -231,6 +231,29 @@ window.closeAuthModal = function closeAuthModal() {
     if (form) form.reset();
 };
 
+window.openForgotPasswordModal = function openForgotPasswordModal() {
+    closeAuthModal();
+    let fModal = document.getElementById('forgot-password-modal');
+    if (!fModal) {
+        initForgotPasswordUI();
+        fModal = document.getElementById('forgot-password-modal');
+    }
+    if (fModal) {
+        fModal.classList.remove('hidden');
+        const alertBox = document.getElementById('forgot-password-alert');
+        if (alertBox) alertBox.classList.add('hidden');
+        const emailInput = document.getElementById('forgot-password-email');
+        if (emailInput) setTimeout(() => emailInput.focus(), 150);
+    }
+};
+
+window.closeForgotPasswordModal = function closeForgotPasswordModal() {
+    const fModal = document.getElementById('forgot-password-modal');
+    const form = document.getElementById('forgot-password-form');
+    if (fModal) fModal.classList.add('hidden');
+    if (form) form.reset();
+};
+
 function switchAuthTab(mode) {
     currentAuthMode = mode;
     const tl = document.getElementById('tab-login');
@@ -239,6 +262,7 @@ function switchAuthTab(mode) {
     const bt = document.getElementById('auth-btn-text');
     const bi = document.querySelector('#auth-submit-btn .material-symbols-outlined');
     const err = document.getElementById('auth-error');
+    const forgotContainer = document.getElementById('auth-forgot-password-container');
     
     if (err) err.classList.add('hidden');
     
@@ -248,6 +272,7 @@ function switchAuthTab(mode) {
         if (ti) ti.innerText = 'Login';
         if (bt) bt.innerText = 'Accedi';
         if (bi) bi.innerText = 'login';
+        if (forgotContainer) forgotContainer.classList.remove('hidden');
         
         // Rimuovi campo email se presente
         const emailGroup = document.getElementById('auth-email-group');
@@ -258,6 +283,7 @@ function switchAuthTab(mode) {
         if (ti) ti.innerText = 'Registrazione';
         if (bt) bt.innerText = 'Registrati';
         if (bi) bi.innerText = 'person_add';
+        if (forgotContainer) forgotContainer.classList.add('hidden');
         
         // Aggiungi campo email per registrazione
         let emailGroup = document.getElementById('auth-email-group');
@@ -791,6 +817,151 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sb.classList.remove('opacity-50');
             }
         });
+    }
+
+    // =========================================
+    // INIZIALIZZAZIONE RECUPERO PASSWORD (POPUP & LOGICA)
+    // =========================================
+    function initForgotPasswordUI() {
+        // 1. Inserisce link 'Password dimenticata?' nel modal di login
+        const authPasswordInput = document.getElementById('auth-password');
+        if (authPasswordInput && !document.getElementById('auth-forgot-password-container')) {
+            const container = document.createElement('div');
+            container.id = 'auth-forgot-password-container';
+            container.className = 'flex justify-end -mt-2 mb-1';
+            container.innerHTML = `
+                <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-primary-container hover:underline transition-all">
+                    Password dimenticata?
+                </button>
+            `;
+            const parent = authPasswordInput.closest('div');
+            if (parent && parent.parentNode) {
+                parent.parentNode.insertBefore(container, parent.nextSibling);
+            }
+        }
+
+        // 2. Crea il popup per il recupero password se non già presente nel DOM
+        if (!document.getElementById('forgot-password-modal')) {
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'forgot-password-modal';
+            modalDiv.className = 'hidden fixed inset-0 z-[110] flex items-center justify-center';
+            modalDiv.innerHTML = `
+                <div id="forgot-password-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer" onclick="closeForgotPasswordModal()"></div>
+                <div class="relative bg-surface-container w-11/12 max-w-md rounded-2xl shadow-2xl p-6 sm:p-7 border border-outline-variant/20 z-10">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center gap-2 text-primary-container">
+                            <span class="material-symbols-outlined text-2xl">lock_reset</span>
+                            <h2 class="text-headline-sm font-headline-sm text-primary-container">Recupero Password</h2>
+                        </div>
+                        <button type="button" onclick="closeForgotPasswordModal()" class="text-on-surface-variant hover:text-white transition-colors">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    
+                    <p class="text-on-surface-variant font-body-sm text-xs sm:text-sm mb-4 leading-relaxed">
+                        Inserisci l'indirizzo email associato al tuo account. Ti invieremo un link per reimpostare la tua password.
+                    </p>
+
+                    <form id="forgot-password-form" class="flex flex-col gap-4">
+                        <div id="forgot-password-alert" class="hidden font-label-sm p-3 rounded border text-center text-xs"></div>
+
+                        <div>
+                            <label class="block font-label-sm text-on-surface-variant mb-1">Email</label>
+                            <input id="forgot-password-email" required
+                                class="w-full bg-black/50 border border-outline-variant/30 rounded px-4 py-3 text-white focus:border-primary-container focus:ring-0 outline-none transition-colors text-sm"
+                                type="email" placeholder="Es. nome@example.com" />
+                        </div>
+
+                        <button type="submit" id="forgot-password-submit-btn"
+                            class="w-full py-3 mt-1 bg-primary-container text-black font-label-md rounded hover:bg-primary transition-all flex justify-center items-center gap-2 font-semibold shadow-md shadow-primary-container/20">
+                            <span class="material-symbols-outlined text-lg">send</span>
+                            <span id="forgot-password-btn-text">Invia link di recupero</span>
+                        </button>
+
+                        <div class="flex justify-center mt-2">
+                            <button type="button" onclick="closeForgotPasswordModal(); openAuthModal(); switchAuthTab('login');"
+                                class="text-xs text-on-surface-variant hover:text-white flex items-center gap-1 transition-colors">
+                                <span class="material-symbols-outlined text-sm">arrow_back</span> Torna al Login
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modalDiv);
+        }
+    }
+
+    initForgotPasswordUI();
+
+    // Gestione invio modulo di recupero password
+    document.addEventListener('submit', async (e) => {
+        if (e.target && e.target.id === 'forgot-password-form') {
+            e.preventDefault();
+            const emailInput = document.getElementById('forgot-password-email');
+            const alertBox = document.getElementById('forgot-password-alert');
+            const btn = document.getElementById('forgot-password-submit-btn');
+            const btnText = document.getElementById('forgot-password-btn-text');
+
+            const emailVal = emailInput ? emailInput.value.trim() : '';
+            if (!emailVal) return;
+
+            const originalText = btnText.innerText;
+            btnText.innerText = 'Invio in corso...';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            alertBox.classList.add('hidden');
+
+            try {
+                const resp = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: emailVal })
+                });
+                const data = await resp.json();
+
+                if (resp.ok && data.success) {
+                    alertBox.className = 'font-label-sm p-3 rounded border text-center text-xs bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+                    let htmlContent = `<div>${data.message || 'Link generato con successo!'}</div>`;
+                    if (data.resetUrl) {
+                        htmlContent += `
+                            <div class="mt-2.5 pt-2 border-t border-emerald-500/20">
+                                <a href="${data.resetUrl}" class="inline-flex items-center gap-1 font-bold text-primary-container underline hover:opacity-80">
+                                    <span class="material-symbols-outlined text-sm">open_in_new</span> Clicca qui per aprire la pagina di reset
+                                </a>
+                            </div>
+                        `;
+                    }
+                    alertBox.innerHTML = htmlContent;
+                    alertBox.classList.remove('hidden');
+                    if (emailInput) emailInput.value = '';
+                } else {
+                    alertBox.className = 'font-label-sm p-3 rounded border text-center text-xs bg-red-500/20 text-red-300 border-red-500/30';
+                    alertBox.innerText = data.message || 'Errore durante l\'invio della richiesta.';
+                    alertBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                alertBox.className = 'font-label-sm p-3 rounded border text-center text-xs bg-red-500/20 text-red-300 border-red-500/30';
+                alertBox.innerText = 'Errore di connessione al server. Verifica la tua connessione e riprova.';
+                alertBox.classList.remove('hidden');
+            } finally {
+                btnText.innerText = originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    });
+
+    // Controllo parametri URL per apertura automatica modal
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    if (currentUrlParams.get('login') === '1') {
+        setTimeout(() => {
+            openAuthModal();
+            switchAuthTab('login');
+        }, 300);
+    } else if (currentUrlParams.get('forgot') === '1') {
+        setTimeout(() => {
+            openForgotPasswordModal();
+        }, 300);
     }
 
     // Global search debounce

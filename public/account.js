@@ -536,3 +536,19 @@ function extendI18nTranslations() {
     // Unisci i dizionari
     Object.assign(translations, accountTranslations);
 }
+
+// =========================================
+// LOGOUT UTENTE DALLA PAGINA ACCOUNT
+// =========================================
+function handleAccountLogout() {
+    localStorage.removeItem('stoike_user');
+    localStorage.removeItem('stoike_role');
+    localStorage.removeItem('stoike_nickname');
+    localStorage.removeItem('stoike_avatar');
+    if (typeof checkAuthState === 'function') {
+        checkAuthState();
+    }
+    window.location.href = '/index.html';
+}
+window.handleAccountLogout = handleAccountLogout;
+

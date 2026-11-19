@@ -35,155 +35,9 @@ app.use((req, res, next) => {
 
 // Configurazione variabili d'ambiente
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const OMDB_API_KEY = process.env.OMDB_API_KEY || '801b4332';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
-// OMDb Mappings and Helpers
-const GENRE_MAP = {
-    "Action": 28,
-    "Adventure": 12,
-    "Animation": 16,
-    "Comedy": 35,
-    "Crime": 80,
-    "Documentary": 99,
-    "Drama": 18,
-    "Family": 10751,
-    "Fantasy": 14,
-    "History": 36,
-    "Horror": 27,
-    "Music": 10402,
-    "Mystery": 9648,
-    "Romance": 10749,
-    "Science Fiction": 878,
-    "Sci-Fi": 878,
-    "TV Movie": 10770,
-    "Thriller": 53,
-    "War": 10752,
-    "Western": 37
-};
-
-const STATIC_GENRES = [
-    { "id": 28, "name": "Action" },
-    { "id": 12, "name": "Adventure" },
-    { "id": 16, "name": "Animation" },
-    { "id": 35, "name": "Comedy" },
-    { "id": 80, "name": "Crime" },
-    { "id": 99, "name": "Documentary" },
-    { "id": 18, "name": "Drama" },
-    { "id": 10751, "name": "Family" },
-    { "id": 14, "name": "Fantasy" },
-    { "id": 36, "name": "History" },
-    { "id": 27, "name": "Horror" },
-    { "id": 10402, "name": "Music" },
-    { "id": 9648, "name": "Mystery" },
-    { "id": 10749, "name": "Romance" },
-    { "id": 878, "name": "Science Fiction" },
-    { "id": 10770, "name": "TV Movie" },
-    { "id": 53, "name": "Thriller" },
-    { "id": 10752, "name": "War" },
-    { "id": 37, "name": "Western" }
-];
-
-const personCache = new Map();
-
-function parseImdbIdToId(imdbId) {
-    if (!imdbId) return null;
-    const match = imdbId.match(/tt(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-}
-
-function formatIdToImdbId(id) {
-    if (!id) return null;
-    const idStr = String(id);
-    if (idStr.length < 7) {
-        return 'tt' + idStr.padStart(7, '0');
-    }
-    return 'tt' + idStr;
-}
-
-function hashStringToInt(str) {
-    if (!str) return 0;
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return Math.abs(hash);
-}
-
-function cleanReleaseDate(releasedStr, yearStr) {
-    if (releasedStr && releasedStr !== 'N/A') {
-        const d = new Date(releasedStr);
-        if (!isNaN(d.getTime())) {
-            return d.toISOString().substring(0, 10);
-        }
-    }
-    if (yearStr && yearStr !== 'N/A') {
-        const y = yearStr.split('–')[0];
-        return `${y}-01-01`;
-    }
-    return 'N/A';
-}
-
-function getFranchiseQuery(title) {
-    if (!title) return null;
-    let clean = title.split(':')[0].split(' - ')[0];
-    clean = clean.replace(/\s+\d+$/, '').trim();
-    if (clean.length < 4) return null;
-    return clean;
-}
-
-function mapOMDBDetailToTMDB(d) {
-    const id = parseImdbIdToId(d.imdbID);
-    const rating = d.imdbRating && d.imdbRating !== 'N/A' ? parseFloat(d.imdbRating) : 0;
-    const release_date = cleanReleaseDate(d.Released, d.Year);
-    
-    const genreIds = d.Genre && d.Genre !== 'N/A'
-        ? d.Genre.split(', ').map(g => GENRE_MAP[g] || GENRE_MAP[g.trim()]).filter(Boolean)
-        : [];
-    const genres = d.Genre && d.Genre !== 'N/A'
-        ? d.Genre.split(', ').map((g, idx) => ({ id: genreIds[idx] || (1000 + idx), name: g }))
-        : [];
-
-    const franchiseQuery = getFranchiseQuery(d.Title);
-    const belongs_to_collection = franchiseQuery ? {
-        id: id,
-        name: `${franchiseQuery} Collection`
-    } : null;
-
-    return {
-        id: id,
-        title: d.Title,
-        original_title: d.Title,
-        genres: genres,
-        genre_ids: genreIds,
-        vote_average: rating,
-        vote_count: d.imdbVotes && d.imdbVotes !== 'N/A' ? parseInt(d.imdbVotes.replace(/,/g, ''), 10) : 0,
-        release_date: release_date,
-        poster_path: d.Poster && d.Poster !== 'N/A' ? d.Poster : null,
-        backdrop_path: d.Poster && d.Poster !== 'N/A' ? d.Poster : null,
-        overview: d.Plot && d.Plot !== 'N/A' ? d.Plot : '',
-        belongs_to_collection: belongs_to_collection
-    };
-}
-
-async function fetchMovieDetailsFromOMDB(imdbID) {
-    try {
-        const response = await axios.get(`http://www.omdbapi.com/`, {
-            params: {
-                apikey: OMDB_API_KEY,
-                i: imdbID,
-                plot: 'short'
-            },
-            timeout: 5000
-        });
-        return response.data;
-    } catch (err) {
-        console.error(`Error fetching OMDB details for ${imdbID}:`, err.message);
-        return null;
-    }
-}
 
 // Headers di utility per le richieste Supabase RPC/REST
 function supabaseHeaders() {
@@ -248,6 +102,14 @@ app.get('/account', (req, res) => {
 });
 app.get('/account.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'account.html'));
+});
+
+// Reset Password
+app.get('/reset-password', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
+});
+app.get('/reset-password.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
 });
 
 // Serve le risorse statiche (JS, CSS, immagini) della cartella public
@@ -351,357 +213,124 @@ function isValidActor(m) {
 app.get('/api/tmdb/*', async (req, res) => {
     const endpoint = req.params[0];
     const params = { ...req.query };
+    params.api_key = TMDB_API_KEY;
+    if (!params.language) {
+        params.language = 'it-IT';
+    }
+    // Rimuove cache buster parametro _t
+    if (params._t) {
+        delete params._t;
+    }
 
-    console.log(`🔍 [OMDb Proxy] Intercettato endpoint TMDB: ${endpoint} con parametri:`, params);
+    const targetUrl = `${TMDB_BASE_URL}/${endpoint}`;
+    console.log(`🔍 [TMDb Proxy] Chiamata a: ${targetUrl} con parametri:`, params);
 
     try {
-        // 1. GENRES
-        if (endpoint === 'genre/movie/list') {
-            return res.json({ genres: STATIC_GENRES });
-        }
-
-        // 2. TRENDING
-        if (endpoint === 'trending/movie/week') {
-            const TRENDING_TITLES = [
-                "Dune: Part Two", "Deadpool & Wolverine", "Inside Out 2", "Gladiator II", 
-                "Oppenheimer", "Barbie", "Spider-Man: Across the Spider-Verse", "The Batman", 
-                "Interstellar", "Inception", "The Dark Knight", "Avatar: The Way of Water"
-            ];
-            const page = parseInt(params.page) || 1;
-            const limit = 10;
-            const start = (page - 1) * limit;
-            const titlesSlice = TRENDING_TITLES.slice(start, start + limit);
-
-            const movies = await Promise.all(titlesSlice.map(async (title) => {
-                const searchRes = await axios.get('http://www.omdbapi.com/', {
-                    params: { apikey: OMDB_API_KEY, t: title, type: 'movie' }
-                });
-                return searchRes.data && searchRes.data.Response === 'True' ? mapOMDBDetailToTMDB(searchRes.data) : null;
-            }));
-
-            return res.json({
-                results: movies.filter(Boolean),
-                page: page,
-                total_pages: Math.ceil(TRENDING_TITLES.length / limit),
-                total_results: TRENDING_TITLES.length
-            });
-        }
-
-        // 3. NOW PLAYING
-        if (endpoint === 'movie/now_playing') {
-            const NOW_PLAYING_TITLES = [
-                "Furiosa: A Mad Max Saga", "The Fall Guy", "Civil War", "Challengers", 
-                "IF", "Godzilla x Kong: The New Empire", "Kingdom of the Planet of the Apes",
-                "A Quiet Place: Day One", "Despicable Me 4", "Twisters", "Alien: Romulus"
-            ];
-            const movies = await Promise.all(NOW_PLAYING_TITLES.slice(0, 10).map(async (title) => {
-                const searchRes = await axios.get('http://www.omdbapi.com/', {
-                    params: { apikey: OMDB_API_KEY, t: title, type: 'movie' }
-                });
-                return searchRes.data && searchRes.data.Response === 'True' ? mapOMDBDetailToTMDB(searchRes.data) : null;
-            }));
-            return res.json({
-                results: movies.filter(Boolean),
-                page: 1,
-                total_pages: 1,
-                total_results: movies.filter(Boolean).length
-            });
-        }
-
-        // 4. SEARCH MOVIE
-        if (endpoint === 'search/movie') {
-            const query = params.query;
-            const year = params.primary_release_year;
-            const page = params.page || 1;
-            if (!query) {
-                return res.json({ results: [], total_results: 0, total_pages: 0 });
-            }
-
-            const searchRes = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, s: query, y: year || undefined, page: page, type: 'movie' }
-            });
-
-            if (searchRes.data && searchRes.data.Search) {
-                const movies = await Promise.all(searchRes.data.Search.map(async (item) => {
-                    const detail = await fetchMovieDetailsFromOMDB(item.imdbID);
-                    return detail ? mapOMDBDetailToTMDB(detail) : null;
-                }));
-                const total = parseInt(searchRes.data.totalResults) || 0;
-                return res.json({
-                    results: movies.filter(Boolean),
-                    total_results: total,
-                    total_pages: Math.ceil(total / 10)
-                });
-            }
-            return res.json({ results: [], total_results: 0, total_pages: 0 });
-        }
-
-        // 5. DISCOVER MOVIE
-        if (endpoint === 'discover/movie') {
-            const year = params.primary_release_year;
-            const page = params.page || 1;
-            
-            let query = "the";
-            if (params.with_genres) {
-                const genreId = parseInt(params.with_genres);
-                const genreKeywords = {
-                    28: "action", 12: "adventure", 16: "animated", 35: "comedy",
-                    80: "crime", 99: "documentary", 18: "drama", 10751: "family",
-                    14: "fantasy", 36: "history", 27: "horror", 10402: "music",
-                    9648: "mystery", 10749: "romance", 878: "sci-fi", 53: "thriller",
-                    10752: "war", 37: "western"
-                };
-                query = genreKeywords[genreId] || "movie";
-            }
-
-            const searchRes = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, s: query, y: year || undefined, page: page, type: 'movie' }
-            });
-
-            if (searchRes.data && searchRes.data.Search) {
-                const movies = await Promise.all(searchRes.data.Search.map(async (item) => {
-                    const detail = await fetchMovieDetailsFromOMDB(item.imdbID);
-                    return detail ? mapOMDBDetailToTMDB(detail) : null;
-                }));
-                const total = parseInt(searchRes.data.totalResults) || 0;
-                return res.json({
-                    results: movies.filter(Boolean),
-                    total_results: total,
-                    total_pages: Math.ceil(total / 10)
-                });
-            }
-            return res.json({ results: [], total_results: 0, total_pages: 0 });
-        }
-
-        // 6. MOVIE DETAIL
-        const movieDetailMatch = endpoint.match(/^movie\/(\d+)$/);
-        if (movieDetailMatch) {
-            const id = parseInt(movieDetailMatch[1], 10);
-            const imdbId = formatIdToImdbId(id);
-            const response = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, i: imdbId, plot: 'full' }
-            });
-            if (response.data && response.data.Response === 'True') {
-                return res.json(mapOMDBDetailToTMDB(response.data));
-            }
-            return res.status(404).json({ error: 'Film non trovato' });
-        }
-
-        // 7. MOVIE CREDITS
-        const movieCreditsMatch = endpoint.match(/^movie\/(\d+)\/credits$/);
-        if (movieCreditsMatch) {
-            const id = parseInt(movieCreditsMatch[1], 10);
-            const imdbId = formatIdToImdbId(id);
-            const response = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, i: imdbId }
-            });
-            if (response.data && response.data.Response === 'True') {
-                const d = response.data;
-                const cast = d.Actors && d.Actors !== 'N/A'
-                    ? d.Actors.split(', ').map(name => {
-                        const actorId = hashStringToInt(name);
-                        personCache.set(actorId, name);
-                        return {
-                            id: actorId,
-                            name: name,
-                            character: 'Actor',
-                            profile_path: null
-                        };
-                    })
-                    : [];
-                const crew = [];
-                if (d.Director && d.Director !== 'N/A') {
-                    d.Director.split(', ').forEach(name => {
-                        crew.push({ id: hashStringToInt(name), name: name, job: 'Director' });
-                    });
-                }
-                if (d.Writer && d.Writer !== 'N/A') {
-                    d.Writer.split(', ').forEach(name => {
-                        crew.push({ id: hashStringToInt(name), name: name, job: 'Writer' });
-                    });
-                }
-                return res.json({ cast, crew });
-            }
-            return res.status(404).json({ error: 'Film non trovato' });
-        }
-
-        // 8. MOVIE VIDEOS
-        const movieVideosMatch = endpoint.match(/^movie\/(\d+)\/videos$/);
-        if (movieVideosMatch) {
-            return res.json({ results: [] });
-        }
-
-        // 9. MOVIE SIMILAR
-        const movieSimilarMatch = endpoint.match(/^movie\/(\d+)\/similar$/);
-        if (movieSimilarMatch) {
-            const id = parseInt(movieSimilarMatch[1], 10);
-            const imdbId = formatIdToImdbId(id);
-            const response = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, i: imdbId }
-            });
-            if (response.data && response.data.Response === 'True') {
-                const genreList = response.data.Genre ? response.data.Genre.split(', ') : [];
-                const primaryGenre = genreList[0] || 'movie';
-                const searchRes = await axios.get('http://www.omdbapi.com/', {
-                    params: { apikey: OMDB_API_KEY, s: primaryGenre, type: 'movie' }
-                });
-                if (searchRes.data && searchRes.data.Search) {
-                    const movies = await Promise.all(searchRes.data.Search.slice(0, 5).map(async (item) => {
-                        const detail = await fetchMovieDetailsFromOMDB(item.imdbID);
-                        return detail ? mapOMDBDetailToTMDB(detail) : null;
-                    }));
-                    return res.json({ results: movies.filter(Boolean) });
-                }
-            }
-            return res.json({ results: [] });
-        }
-
-        // 10. COLLECTION
-        const collectionMatch = endpoint.match(/^collection\/(\d+)$/);
-        if (collectionMatch) {
-            const id = parseInt(collectionMatch[1], 10);
-            const imdbId = formatIdToImdbId(id);
-            const response = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, i: imdbId }
-            });
-            if (response.data && response.data.Response === 'True') {
-                const franchiseQuery = getFranchiseQuery(response.data.Title);
-                if (franchiseQuery) {
-                    const searchRes = await axios.get('http://www.omdbapi.com/', {
-                        params: { apikey: OMDB_API_KEY, s: franchiseQuery, type: 'movie' }
-                    });
-                    if (searchRes.data && searchRes.data.Search) {
-                        const movies = await Promise.all(searchRes.data.Search.map(async (item) => {
-                            const detail = await fetchMovieDetailsFromOMDB(item.imdbID);
-                            return detail ? mapOMDBDetailToTMDB(detail) : null;
-                        }));
-                        const parts = movies.filter(Boolean).sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
-                        return res.json({
-                            id: id,
-                            name: `${franchiseQuery} Collection`,
-                            parts: parts
-                        });
-                    }
-                }
-            }
-            return res.json({ id: id, name: 'Collection', parts: [] });
-        }
-
-        // 11. RELEASE DATES
-        const releaseDatesMatch = endpoint.match(/^movie\/(\d+)\/release_dates$/);
-        if (releaseDatesMatch) {
-            const id = parseInt(releaseDatesMatch[1], 10);
-            const imdbId = formatIdToImdbId(id);
-            const response = await axios.get('http://www.omdbapi.com/', {
-                params: { apikey: OMDB_API_KEY, i: imdbId }
-            });
-            if (response.data && response.data.Response === 'True') {
-                const cleanedDate = cleanReleaseDate(response.data.Released, response.data.Year);
-                const dateISO = cleanedDate !== 'N/A' ? `${cleanedDate}T00:00:00.000Z` : null;
-                return res.json({
-                    results: [
-                        {
-                            iso_3166_1: "US",
-                            release_dates: dateISO ? [{ type: 3, release_date: dateISO }] : []
-                        },
-                        {
-                            iso_3166_1: "IT",
-                            release_dates: dateISO ? [{ type: 3, release_date: dateISO }] : []
-                        }
-                    ]
-                });
-            }
-            return res.json({ results: [] });
-        }
-
-        // 12. SEARCH PERSON
-        if (endpoint === 'search/person') {
-            const query = params.query;
-            if (!query) return res.json({ results: [] });
-            const personId = hashStringToInt(query);
-            personCache.set(personId, query);
-            return res.json({
-                results: [
-                    {
-                        id: personId,
-                        name: query,
-                        profile_path: null
-                    }
-                ]
-            });
-        }
-
-        // 13. PERSON DETAIL
-        const personDetailMatch = endpoint.match(/^person\/(\d+)$/);
-        if (personDetailMatch) {
-            const id = parseInt(personDetailMatch[1], 10);
-            const name = personCache.get(id) || `Actor #${id}`;
-            return res.json({
-                id: id,
-                name: name,
-                biography: '',
-                birthday: null,
-                place_of_birth: null,
-                profile_path: null
-            });
-        }
-
-        // 14. PERSON MOVIE CREDITS
-        const personMovieCreditsMatch = endpoint.match(/^person\/(\d+)\/movie_credits$/);
-        if (personMovieCreditsMatch) {
-            const id = parseInt(personMovieCreditsMatch[1], 10);
-            const name = personCache.get(id);
-            if (name) {
-                const searchRes = await axios.get('http://www.omdbapi.com/', {
-                    params: { apikey: OMDB_API_KEY, s: name, type: 'movie' }
-                });
-                if (searchRes.data && searchRes.data.Search) {
-                    const movies = await Promise.all(searchRes.data.Search.map(async (item) => {
-                        const detail = await fetchMovieDetailsFromOMDB(item.imdbID);
-                        return detail ? mapOMDBDetailToTMDB(detail) : null;
-                    }));
-                    return res.json({ cast: movies.filter(Boolean) });
-                }
-            }
-            return res.json({ cast: [] });
-        }
-
-        // 15. PERSON POPULAR
-        if (endpoint === 'person/popular') {
-            const POPULAR_ACTORS = [
-                "Leonardo DiCaprio", "Brad Pitt", "Scarlett Johansson", "Tom Hanks", 
-                "Robert Downey Jr.", "Johnny Depp", "Jennifer Lawrence", "Matt Damon", 
-                "Morgan Freeman", "Meryl Streep", "Christian Bale", "Al Pacino"
-            ];
-            const results = POPULAR_ACTORS.map(name => {
-                const actorId = hashStringToInt(name);
-                personCache.set(actorId, name);
-                return {
-                    id: actorId,
-                    name: name,
-                    profile_path: null,
-                    known_for: []
-                };
-            });
-            return res.json({ results, total_pages: 1, page: 1 });
-        }
-
-        // Fallback generic proxy to TMDB (just in case)
-        const targetUrl = `${TMDB_BASE_URL}/${endpoint}`;
-        console.log(`⚠️ [OMDb Proxy Fallback] Endpoint sconosciuto, inoltro a TMDB: ${targetUrl}`);
-        params.api_key = TMDB_API_KEY;
         const response = await axios.get(targetUrl, {
             params,
             headers: {
-                'User-Agent': 'Mozilla/5.0'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
             timeout: 10000
         });
-        return res.status(response.status).json(response.data);
+        console.log(`✅ [TMDb Proxy] Risposta ricevuta: Stato ${response.status}`);
 
+        let data = response.data;
+        if (data) {
+            // Caso 1: Array di risultati (liste di film / persone)
+            if (Array.isArray(data.results)) {
+                const filterPromises = data.results.map(async (m) => {
+                    if (m && m.id) {
+                        if (!isMovieObject(m)) {
+                            return isValidActor(m) ? m : null;
+                        }
+                        const inItaly = await isMovieInItaly(m.id, m.original_language);
+                        if (inItaly && isValidTitle(m.title, m.original_title)) {
+                            return m;
+                        }
+                    }
+                    return null;
+                });
+                const resolved = await Promise.all(filterPromises);
+                data.results = resolved.filter(Boolean);
+            }
+            // Caso 2: Parti di una collezione
+            else if (Array.isArray(data.parts)) {
+                const filterPromises = data.parts.map(async (m) => {
+                    if (m && m.id) {
+                        if (!isMovieObject(m)) {
+                            return isValidActor(m) ? m : null;
+                        }
+                        const inItaly = await isMovieInItaly(m.id, m.original_language);
+                        if (inItaly && isValidTitle(m.title, m.original_title)) {
+                            return m;
+                        }
+                    }
+                    return null;
+                });
+                const resolved = await Promise.all(filterPromises);
+                data.parts = resolved.filter(Boolean);
+            }
+            // Caso 3: Crediti cast/crew di un attore / film
+            else if (Array.isArray(data.cast) || Array.isArray(data.crew)) {
+                if (Array.isArray(data.cast)) {
+                    const filterPromises = data.cast.map(async (m) => {
+                        if (m && m.id) {
+                            if (!isMovieObject(m)) {
+                                return isValidActor(m) ? m : null;
+                            }
+                            const inItaly = await isMovieInItaly(m.id, m.original_language);
+                            if (inItaly && isValidTitle(m.title, m.original_title)) {
+                                return m;
+                            }
+                        }
+                        return null;
+                    });
+                    const resolved = await Promise.all(filterPromises);
+                    data.cast = resolved.filter(Boolean);
+                }
+                if (Array.isArray(data.crew)) {
+                    const filterPromises = data.crew.map(async (m) => {
+                        if (m && m.id) {
+                            if (!isMovieObject(m)) {
+                                return isValidActor(m) ? m : null;
+                            }
+                            const inItaly = await isMovieInItaly(m.id, m.original_language);
+                            if (inItaly && isValidTitle(m.title, m.original_title)) {
+                                return m;
+                            }
+                        }
+                        return null;
+                    });
+                    const resolved = await Promise.all(filterPromises);
+                    data.crew = resolved.filter(Boolean);
+                }
+            }
+            // Caso 4: Dettaglio singolo film
+            else if (/^movie\/\d+$/.test(endpoint)) {
+                if (data.id && isMovieObject(data)) {
+                    const inItaly = await isMovieInItaly(data.id, data.original_language);
+                    if (!inItaly || !isValidTitle(data.title, data.original_title)) {
+                        console.log(`🚫 [TMDb Proxy] Film ID ${data.id} filtrato (non in Italia o titolo non valido).`);
+                        return res.status(404).json({ success: false, message: 'Film non disponibile in Italia o lingua non supportata.' });
+                    }
+                }
+            }
+            // Caso 5: Dettaglio singolo attore
+            else if (/^person\/\d+$/.test(endpoint)) {
+                if (data.id && !isValidActor(data)) {
+                    console.log(`🚫 [TMDb Proxy] Attore ID ${data.id} filtrato (nome con caratteri non latini).`);
+                    return res.status(404).json({ success: false, message: 'Attore non supportato a sistema.' });
+                }
+            }
+        }
+
+        return res.status(response.status).json(data);
     } catch (error) {
-        console.error(`❌ [OMDb Proxy] ERRORE:`, error.message);
-        return res.status(500).json({ error: error.message });
+        console.error(`❌ [TMDb Proxy] ERRORE:`, error.message);
+        const status = error.response ? error.response.status : 500;
+        const data = error.response ? error.response.data : { error: error.message };
+        return res.status(status).json(data);
     }
 });
 
@@ -752,6 +381,269 @@ app.post('/api/auth/register', async (req, res) => {
         const data = error.response ? error.response.data : { error: error.message };
         return res.status(status).json(data);
     }
+});
+
+// Storage per i token di recupero password
+const passwordResetsPath = path.join(__dirname, 'password_resets.json');
+let passwordResets = {};
+
+try {
+    if (fs.existsSync(passwordResetsPath)) {
+        passwordResets = JSON.parse(fs.readFileSync(passwordResetsPath, 'utf8'));
+    }
+} catch (e) {
+    console.error('❌ Errore caricamento password_resets.json:', e.message);
+    passwordResets = {};
+}
+
+function savePasswordResets() {
+    try {
+        fs.writeFileSync(passwordResetsPath, JSON.stringify(passwordResets, null, 2), 'utf8');
+    } catch (e) {
+        console.error('❌ Errore salvataggio password_resets.json:', e.message);
+    }
+}
+
+function cleanExpiredResetTokens() {
+    const now = Date.now();
+    let changed = false;
+    for (const [token, data] of Object.entries(passwordResets)) {
+        if (!data || !data.expiresAt || data.expiresAt < now) {
+            delete passwordResets[token];
+            changed = true;
+        }
+    }
+    if (changed) savePasswordResets();
+}
+
+// 1. Richiesta invio email per reset password
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body || {};
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    console.log(`🔐 [Forgot Password] Richiesta recupero per email: '${normalizedEmail}'`);
+
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        return res.status(400).json({ success: false, message: 'Inserisci un indirizzo email valido.' });
+    }
+
+    cleanExpiredResetTokens();
+
+    let targetUser = null;
+
+    // 1. Cerca in Supabase nella tabella users
+    try {
+        const userRes = await axios.get(`${SUPABASE_URL}/rest/v1/users`, {
+            params: {
+                email: `ilike.${normalizedEmail}`,
+                select: 'id,username,email'
+            },
+            headers: supabaseHeaders(),
+            timeout: 8000
+        });
+        if (userRes.data && userRes.data.length > 0) {
+            targetUser = userRes.data[0];
+            console.log(`🔐 [Forgot Password] Utente trovato in Supabase: '${targetUser.username}'`);
+        }
+    } catch (dbErr) {
+        console.warn(`⚠️ [Forgot Password] Errore ricerca email in Supabase: ${dbErr.message}`);
+    }
+
+    // 2. Fallback: cerca nei profili locali
+    if (!targetUser) {
+        try {
+            if (fs.existsSync(userProfilesPath)) {
+                const profiles = JSON.parse(fs.readFileSync(userProfilesPath, 'utf8'));
+                for (const [uname, data] of Object.entries(profiles)) {
+                    if (data && data.email && data.email.toLowerCase() === normalizedEmail) {
+                        targetUser = { username: uname, email: data.email };
+                        console.log(`🔐 [Forgot Password] Utente trovato nei profili locali: '${uname}'`);
+                        break;
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    if (!targetUser) {
+        return res.status(404).json({
+            success: false,
+            message: 'Nessun account trovato associato a questa email.'
+        });
+    }
+
+    // 3. Genera token crittografico univoco valido 1 ora
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    passwordResets[resetToken] = {
+        username: targetUser.username,
+        email: targetUser.email || normalizedEmail,
+        expiresAt: Date.now() + 60 * 60 * 1000 // 1 ora
+    };
+    savePasswordResets();
+
+    const host = req.get('host');
+    const protocol = req.protocol;
+    const resetUrl = `${protocol}://${host}/reset-password.html?token=${resetToken}`;
+    console.log(`🔗 [Forgot Password] Link generato per '${targetUser.username}': ${resetUrl}`);
+
+    // 4. Invio email tramite Nodemailer SMTP
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT || '587';
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpFrom = process.env.SMTP_FROM || '"Stoike Support" <noreply@stoike.cinema>';
+
+    let emailSent = false;
+
+    if (smtpHost && smtpUser && smtpPass) {
+        try {
+            const nodemailer = require('nodemailer');
+            const transporter = nodemailer.createTransport({
+                host: smtpHost,
+                port: parseInt(smtpPort),
+                secure: smtpPort === '465',
+                auth: { user: smtpUser, pass: smtpPass }
+            });
+
+            await transporter.sendMail({
+                from: smtpFrom,
+                to: targetUser.email || normalizedEmail,
+                subject: 'Stoike — Reimpostazione della tua Password',
+                html: `
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0c10; color: #ffffff; padding: 40px 20px; max-width: 600px; margin: 0 auto; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <h1 style="color: #ffd700; margin: 0; font-size: 32px; letter-spacing: 2px;">STOIKE</h1>
+                            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Il portale dedicato al cinema</p>
+                        </div>
+                        <div style="background-color: #16171d; padding: 32px; border-radius: 12px; border: 1px solid rgba(255,215,0,0.25);">
+                            <h2 style="color: #ffffff; margin-top: 0; font-size: 20px;">Ciao ${targetUser.username},</h2>
+                            <p style="color: #cccccc; line-height: 1.6; font-size: 15px;">
+                                Abbiamo ricevuto una richiesta di reimpostazione della password per il tuo account Stoike.
+                            </p>
+                            <p style="color: #cccccc; line-height: 1.6; font-size: 15px;">
+                                Clicca sul pulsante sottostante per scegliere una nuova password:
+                            </p>
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="${resetUrl}" style="background-color: #ffd700; color: #0b0c10; font-weight: 700; padding: 14px 34px; border-radius: 30px; text-decoration: none; display: inline-block; box-shadow: 0 4px 15px rgba(255,215,0,0.3); font-size: 15px;">Reimposta Password</a>
+                            </div>
+                            <p style="color: #888888; font-size: 13px; line-height: 1.5;">
+                                Se il pulsante non funziona, copia e incolla questo link nel tuo browser:<br/>
+                                <a href="${resetUrl}" style="color: #ffd700; word-break: break-all;">${resetUrl}</a>
+                            </p>
+                            <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 25px 0;" />
+                            <p style="color: #666666; font-size: 12px; margin: 0;">
+                                ⚠️ Questo link è valido per <strong>1 ora</strong>. Se non sei stato tu a richiedere il cambio password, puoi ignorare questo messaggio.
+                            </p>
+                        </div>
+                    </div>
+                `
+            });
+            console.log(`✉️ [Forgot Password] Email inviata con successo a ${targetUser.email || normalizedEmail}`);
+            emailSent = true;
+        } catch (mailErr) {
+            console.error(`❌ [Forgot Password] Errore invio email SMTP:`, mailErr.message);
+        }
+    } else {
+        console.warn(`⚠️ [Forgot Password] SMTP non configurato. Link stampato nei log per test.`);
+    }
+
+    return res.json({
+        success: true,
+        message: emailSent
+            ? 'Ti abbiamo inviato un\'email con il link per creare una nuova password!'
+            : 'Richiesta elaborata! Controlla la tua email (se sei in test, puoi usare anche il link diretto).',
+        emailSent: emailSent,
+        resetUrl: (!emailSent ? resetUrl : undefined)
+    });
+});
+
+// 2. Verifica validità del token di reset
+app.get('/api/auth/verify-reset-token', (req, res) => {
+    const token = (req.query.token || '').trim();
+    cleanExpiredResetTokens();
+
+    if (!token || !passwordResets[token]) {
+        return res.status(400).json({
+            success: false,
+            message: 'Il link di recupero password non è valido o è scaduto. Richiedine uno nuovo.'
+        });
+    }
+
+    const tokenData = passwordResets[token];
+    return res.json({
+        success: true,
+        username: tokenData.username,
+        email: tokenData.email
+    });
+});
+
+// 3. Salvataggio della nuova password
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { token, new_password } = req.body || {};
+    cleanExpiredResetTokens();
+
+    if (!token || !passwordResets[token]) {
+        return res.status(400).json({
+            success: false,
+            message: 'Il link di recupero password non è più valido o è scaduto. Richiedine uno nuovo.'
+        });
+    }
+
+    if (!new_password || String(new_password).trim().length < 4) {
+        return res.status(400).json({
+            success: false,
+            message: 'La nuova password deve contenere almeno 4 caratteri.'
+        });
+    }
+
+    const tokenData = passwordResets[token];
+    const username = tokenData.username;
+    const cleanPassword = String(new_password).trim();
+    const newPasswordHash = crypto.createHash('sha512').update(cleanPassword).digest('hex');
+
+    console.log(`🔑 [Password Reset] Aggiornamento password per utente: '${username}'...`);
+
+    let updatedInSupabase = false;
+
+    // Aggiorna la tabella users su Supabase
+    try {
+        const patchRes = await axios.patch(`${SUPABASE_URL}/rest/v1/users`, {
+            password_hash: newPasswordHash
+        }, {
+            params: {
+                username: `eq.${username}`
+            },
+            headers: supabaseHeaders(),
+            timeout: 10000
+        });
+        console.log(`✅ [Password Reset] Password aggiornata su Supabase per '${username}' (Stato: ${patchRes.status})`);
+        updatedInSupabase = true;
+    } catch (dbErr) {
+        console.warn(`⚠️ [Password Reset] Errore eq.${username} su Supabase: ${dbErr.message}. Tentativo con ilike...`);
+        try {
+            await axios.patch(`${SUPABASE_URL}/rest/v1/users`, {
+                password_hash: newPasswordHash
+            }, {
+                params: {
+                    username: `ilike.${username}`
+                },
+                headers: supabaseHeaders(),
+                timeout: 10000
+            });
+            console.log(`✅ [Password Reset] Password aggiornata su Supabase via ilike per '${username}'`);
+            updatedInSupabase = true;
+        } catch (ilikeErr) {
+            console.error(`❌ [Password Reset] Fallito aggiornamento password su Supabase:`, ilikeErr.message);
+        }
+    }
+
+    // Invalida il token in modo che non possa essere riutilizzato
+    delete passwordResets[token];
+    savePasswordResets();
+
+    return res.json({
+        success: true,
+        message: 'Password aggiornata con successo! Ora puoi accedere con le nuove credenziali.'
+    });
 });
 
 
@@ -1496,28 +1388,28 @@ app.post('/api/reminders', async (req, res) => {
     let finalPosterUrl = poster_url;
     let finalReleaseDate = release_date;
 
-    // Recupera informazioni mancanti o incomplete da OMDb
+    // Recupera informazioni mancanti o incomplete da TMDb
     try {
-        console.log(`🔍 [OMDb Lookup] Recupero dettagli film da OMDb per ID ${tmdb_movie_id}...`);
-        const imdbId = formatIdToImdbId(tmdb_movie_id);
-        const tmdbRes = await axios.get('http://www.omdbapi.com/', {
-            params: { apikey: OMDB_API_KEY, i: imdbId },
+        console.log(`🔍 [TMDb Lookup] Recupero dettagli film da TMDb per ID ${tmdb_movie_id}...`);
+        const tmdbRes = await axios.get(`${TMDB_BASE_URL}/movie/${tmdb_movie_id}`, {
+            params: { api_key: TMDB_API_KEY, language: 'it-IT' },
             timeout: 5000
         });
-        if (tmdbRes.data && tmdbRes.data.Response === 'True') {
-            const mapped = mapOMDBDetailToTMDB(tmdbRes.data);
+        if (tmdbRes.data) {
             if (!finalTitle || finalTitle === 'undefined' || finalTitle === '') {
-                finalTitle = mapped.title;
+                finalTitle = tmdbRes.data.title;
             }
             if (!finalReleaseDate || finalReleaseDate === 'undefined' || finalReleaseDate === '') {
-                finalReleaseDate = mapped.release_date;
+                finalReleaseDate = tmdbRes.data.release_date;
             }
             if (!finalPosterUrl || finalPosterUrl.includes('undefined') || finalPosterUrl.includes('placeholder') || finalPosterUrl === '') {
-                finalPosterUrl = mapped.poster_path || `https://via.placeholder.com/500x750/131313/FFFFFF?text=${encodeURIComponent(finalTitle || 'No+Cover')}`;
+                finalPosterUrl = tmdbRes.data.poster_path
+                    ? `https://image.tmdb.org/t/p/w500${tmdbRes.data.poster_path}`
+                    : `https://via.placeholder.com/500x750/131313/FFFFFF?text=${encodeURIComponent(finalTitle || 'No+Cover')}`;
             }
         }
     } catch (tmdbErr) {
-        console.warn(`⚠️ [OMDb Lookup] Fallito recupero da OMDb per ID ${tmdb_movie_id}: ${tmdbErr.message}`);
+        console.warn(`⚠️ [TMDb Lookup] Fallito recupero da TMDb per ID ${tmdb_movie_id}: ${tmdbErr.message}`);
     }
 
     if (!finalTitle) {
@@ -2039,42 +1931,35 @@ async function checkAndSendReleaseNotifications() {
         for (const reminder of reminders) {
             let relDate = reminder.release_date;
 
-            // Se la release_date è mancante, tenta di recuperarla da OMDb e aggiornare il DB
+            // Se la release_date è mancante, tenta di recuperarla da TMDb e aggiornare il DB
             if (!relDate && reminder.tmdb_movie_id) {
-                console.log(`🔍 [Release Worker] release_date mancante per '${reminder.title}' (ID: ${reminder.tmdb_movie_id}). Tentativo recupero da OMDb...`);
+                console.log(`🔍 [Release Worker] release_date mancante per '${reminder.title}' (ID: ${reminder.tmdb_movie_id}). Tentativo recupero da TMDb...`);
                 try {
-                    const imdbId = formatIdToImdbId(reminder.tmdb_movie_id);
-                    const tmdbRes = await axios.get('http://www.omdbapi.com/', {
-                        params: { apikey: OMDB_API_KEY, i: imdbId },
+                    const tmdbRes = await axios.get(`${TMDB_BASE_URL}/movie/${reminder.tmdb_movie_id}`, {
+                        params: { api_key: TMDB_API_KEY, language: 'it-IT' },
                         timeout: 5000
                     });
-                    if (tmdbRes.data && tmdbRes.data.Response === 'True') {
-                        const mapped = mapOMDBDetailToTMDB(tmdbRes.data);
-                        if (mapped.release_date && mapped.release_date !== 'N/A') {
-                            relDate = mapped.release_date;
-                            console.log(`✅ [Release Worker] release_date recuperata da OMDb: ${relDate}. Aggiornamento DB...`);
-                            // Aggiorna il record nel DB con la release_date recuperata
-                            try {
-                                await axios.patch(`${SUPABASE_URL}/rest/v1/movie_reminders`, {
-                                    release_date: relDate
-                                }, {
-                                    params: { id: `eq.${reminder.id}` },
-                                    headers: supabaseHeaders(),
-                                    timeout: 10000
-                                });
-                            } catch (patchDateErr) {
-                                console.warn(`⚠️ [Release Worker] Impossibile aggiornare release_date nel DB per ID ${reminder.id}:`, patchDateErr.message);
-                            }
-                        } else {
-                            console.warn(`⚠️ [Release Worker] OMDb non ha restituito una release_date per ID ${reminder.tmdb_movie_id}. Salto questo promemoria.`);
-                            continue;
+                    if (tmdbRes.data && tmdbRes.data.release_date) {
+                        relDate = tmdbRes.data.release_date;
+                        console.log(`✅ [Release Worker] release_date recuperata da TMDb: ${relDate}. Aggiornamento DB...`);
+                        // Aggiorna il record nel DB con la release_date recuperata
+                        try {
+                            await axios.patch(`${SUPABASE_URL}/rest/v1/movie_reminders`, {
+                                release_date: relDate
+                            }, {
+                                params: { id: `eq.${reminder.id}` },
+                                headers: supabaseHeaders(),
+                                timeout: 10000
+                            });
+                        } catch (patchDateErr) {
+                            console.warn(`⚠️ [Release Worker] Impossibile aggiornare release_date nel DB per ID ${reminder.id}:`, patchDateErr.message);
                         }
                     } else {
-                        console.warn(`⚠️ [Release Worker] OMDb non ha restituito una risposta valida per ID ${reminder.tmdb_movie_id}. Salto questo promemoria.`);
+                        console.warn(`⚠️ [Release Worker] TMDb non ha restituito una release_date per ID ${reminder.tmdb_movie_id}. Salto questo promemoria.`);
                         continue;
                     }
                 } catch (tmdbErr) {
-                    console.warn(`⚠️ [Release Worker] Impossibile recuperare release_date da OMDb per ID ${reminder.tmdb_movie_id}:`, tmdbErr.message);
+                    console.warn(`⚠️ [Release Worker] Impossibile recuperare release_date da TMDb per ID ${reminder.tmdb_movie_id}:`, tmdbErr.message);
                     continue;
                 }
             }

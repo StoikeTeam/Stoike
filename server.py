@@ -6,6 +6,8 @@ Le chiavi API sono nascoste lato server in .env.
 
 import sys
 import os
+import re
+import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -27,130 +29,9 @@ CORS(app)
 
 # Configurazione
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
-OMDB_API_KEY = os.getenv('OMDB_API_KEY', '801b4332')
 TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-
-# OMDb API Mappings and Helpers
-GENRE_MAP = {
-    "Action": 28, "Adventure": 12, "Animation": 16, "Comedy": 35,
-    "Crime": 80, "Documentary": 99, "Drama": 18, "Family": 10751,
-    "Fantasy": 14, "History": 36, "Horror": 27, "Music": 10402,
-    "Mystery": 9648, "Romance": 10749, "Science Fiction": 878,
-    "Sci-Fi": 878, "TV Movie": 10770, "Thriller": 53, "War": 10752,
-    "Western": 37
-}
-
-STATIC_GENRES = [
-    { "id": 28, "name": "Action" },
-    { "id": 12, "name": "Adventure" },
-    { "id": 16, "name": "Animation" },
-    { "id": 35, "name": "Comedy" },
-    { "id": 80, "name": "Crime" },
-    { "id": 99, "name": "Documentary" },
-    { "id": 18, "name": "Drama" },
-    { "id": 10751, "name": "Family" },
-    { "id": 14, "name": "Fantasy" },
-    { "id": 36, "name": "History" },
-    { "id": 27, "name": "Horror" },
-    { "id": 10402, "name": "Music" },
-    { "id": 9648, "name": "Mystery" },
-    { "id": 10749, "name": "Romance" },
-    { "id": 878, "name": "Science Fiction" },
-    { "id": 10770, "name": "TV Movie" },
-    { "id": 53, "name": "Thriller" },
-    { "id": 10752, "name": "War" },
-    { "id": 37, "name": "Western" }
-]
-
-person_cache = {}
-
-def parse_imdb_id_to_id(imdb_id):
-    if not imdb_id:
-        return None
-    import re
-    match = re.match(r'tt(\d+)', imdb_id)
-    return int(match.group(1)) if match else None
-
-def format_id_to_imdb_id(movie_id):
-    if not movie_id:
-        return None
-    id_str = str(movie_id)
-    if len(id_str) < 7:
-        return 'tt' + id_str.zfill(7)
-    return 'tt' + id_str
-
-def hash_string_to_int(s):
-    if not s:
-        return 0
-    h = 0
-    for char in s:
-        h = ord(char) + ((h << 5) - h)
-    return abs(h)
-
-def clean_release_date(released_str, year_str):
-    if released_str and released_str != 'N/A':
-        from datetime import datetime
-        try:
-            d = datetime.strptime(released_str, '%d %b %Y')
-            return d.strftime('%Y-%m-%d')
-        except ValueError:
-            pass
-    if year_str and year_str != 'N/A':
-        y = year_str.split('–')[0]
-        return f"{y}-01-01"
-    return 'N/A'
-
-def get_franchise_query(title):
-    if not title:
-        return None
-    clean = title.split(':')[0].split(' - ')[0]
-    import re
-    clean = re.sub(r'\s+\d+$', '', clean).strip()
-    return clean if len(clean) >= 4 else None
-
-def map_omdb_detail_to_tmdb(d):
-    movie_id = parse_imdb_id_to_id(d.get('imdbID'))
-    imdb_rating = d.get('imdbRating')
-    rating = float(imdb_rating) if imdb_rating and imdb_rating != 'N/A' else 0.0
-    release_date = clean_release_date(d.get('Released'), d.get('Year'))
-    
-    genre_str = d.get('Genre')
-    genre_names = genre_str.split(', ') if genre_str and genre_str != 'N/A' else []
-    genre_ids = [GENRE_MAP[g] for g in genre_names if g in GENRE_MAP]
-    genres = [{'id': genre_ids[idx] if idx < len(genre_ids) else 1000 + idx, 'name': name} for idx, name in enumerate(genre_names)]
-    
-    franchise = get_franchise_query(d.get('Title'))
-    belongs_to_collection = {
-        'id': movie_id,
-        'name': f"{franchise} Collection"
-    } if franchise else None
-    
-    imdb_votes = d.get('imdbVotes')
-    votes = int(imdb_votes.replace(',', '')) if imdb_votes and imdb_votes != 'N/A' else 0
-
-    return {
-        'id': movie_id,
-        'title': d.get('Title'),
-        'original_title': d.get('Title'),
-        'genres': genres,
-        'genre_ids': genre_ids,
-        'vote_average': rating,
-        'vote_count': votes,
-        'release_date': release_date,
-        'poster_path': d.get('Poster') if d.get('Poster') and d.get('Poster') != 'N/A' else None,
-        'backdrop_path': d.get('Poster') if d.get('Poster') and d.get('Poster') != 'N/A' else None,
-        'overview': d.get('Plot') if d.get('Plot') and d.get('Plot') != 'N/A' else '',
-        'belongs_to_collection': belongs_to_collection
-    }
-
-def fetch_movie_details_from_omdb(imdb_id):
-    try:
-        r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id, 'plot': 'short'}, timeout=5)
-        return r.json() if r.status_code == 200 else None
-    except Exception:
-        return None
 
 # Headers per Supabase REST API
 def supabase_headers():
@@ -168,6 +49,11 @@ def supabase_headers():
 @app.route('/')
 def serve_index():
     return send_from_directory('public', 'index.html')
+
+@app.route('/reset-password')
+@app.route('/reset-password.html')
+def serve_reset_password():
+    return send_from_directory('public', 'reset-password.html')
 
 @app.route('/<path:path>')
 def serve_static(path):
@@ -264,301 +150,90 @@ def is_valid_actor(m):
 
 @app.route('/api/tmdb/<path:endpoint>')
 def proxy_tmdb(endpoint):
+    """Proxy generico per qualsiasi endpoint TMDb. Nasconde l'API key."""
     params = dict(request.args)
-    print(f"🔍 [OMDb Proxy] Intercettato endpoint TMDB: {endpoint} con parametri: {params}")
+    params['api_key'] = TMDB_API_KEY
+    if 'language' not in params:
+        params['language'] = 'it-IT'
+    
+    # Rimuoviamo il parametro cache buster '_t' prima di inviarlo a TMDb
+    if '_t' in params:
+        params.pop('_t')
+
+    target_url = f'{TMDB_BASE_URL}/{endpoint}'
+    print(f"🔍 [TMDb Proxy] Chiamata a: {target_url} con parametri: {params}")
     
     try:
-        # 1. GENRES
-        if endpoint == 'genre/movie/list':
-            return jsonify({'genres': STATIC_GENRES})
-            
-        # 2. TRENDING
-        if endpoint == 'trending/movie/week':
-            TRENDING_TITLES = [
-                "Dune: Part Two", "Deadpool & Wolverine", "Inside Out 2", "Gladiator II", 
-                "Oppenheimer", "Barbie", "Spider-Man: Across the Spider-Verse", "The Batman", 
-                "Interstellar", "Inception", "The Dark Knight", "Avatar: The Way of Water"
-            ]
-            page = int(params.get('page', 1))
-            limit = 10
-            start = (page - 1) * limit
-            titles_slice = TRENDING_TITLES[start:start + limit]
-            
-            movies = []
-            for title in titles_slice:
-                r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 't': title, 'type': 'movie'}, timeout=5)
-                if r.status_code == 200 and r.json().get('Response') == 'True':
-                    movies.append(map_omdb_detail_to_tmdb(r.json()))
-            return jsonify({
-                'results': movies,
-                'page': page,
-                'total_pages': (len(TRENDING_TITLES) + limit - 1) // limit,
-                'total_results': len(TRENDING_TITLES)
-            })
-            
-        # 3. NOW PLAYING
-        if endpoint == 'movie/now_playing':
-            NOW_PLAYING_TITLES = [
-                "Furiosa: A Mad Max Saga", "The Fall Guy", "Civil War", "Challengers", 
-                "IF", "Godzilla x Kong: The New Empire", "Kingdom of the Planet of the Apes",
-                "A Quiet Place: Day One", "Despicable Me 4", "Twisters", "Alien: Romulus"
-            ]
-            movies = []
-            for title in NOW_PLAYING_TITLES[:10]:
-                r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 't': title, 'type': 'movie'}, timeout=5)
-                if r.status_code == 200 and r.json().get('Response') == 'True':
-                    movies.append(map_omdb_detail_to_tmdb(r.json()))
-            return jsonify({
-                'results': movies,
-                'page': 1,
-                'total_pages': 1,
-                'total_results': len(movies)
-            })
-            
-        # 4. SEARCH MOVIE
-        if endpoint == 'search/movie':
-            query = params.get('query')
-            year = params.get('primary_release_year')
-            page = int(params.get('page', 1))
-            if not query:
-                return jsonify({'results': [], 'total_results': 0, 'total_pages': 0})
-                
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 's': query, 'y': year, 'page': page, 'type': 'movie'}, timeout=5)
-            if r.status_code == 200 and r.json().get('Search'):
-                movies = []
-                for item in r.json().get('Search'):
-                    detail = fetch_movie_details_from_omdb(item.get('imdbID'))
-                    if detail:
-                        movies.append(map_omdb_detail_to_tmdb(detail))
-                total = int(r.json().get('totalResults', 0))
-                return jsonify({
-                    'results': movies,
-                    'total_results': total,
-                    'total_pages': (total + 9) // 10
-                })
-            return jsonify({'results': [], 'total_results': 0, 'total_pages': 0})
-
-        # 5. DISCOVER MOVIE
-        if endpoint == 'discover/movie':
-            year = params.get('primary_release_year')
-            page = int(params.get('page', 1))
-            query = "the"
-            if params.get('with_genres'):
-                genre_id = int(params.get('with_genres'))
-                genre_keywords = {
-                    28: "action", 12: "adventure", 16: "animated", 35: "comedy",
-                    80: "crime", 99: "documentary", 18: "drama", 10751: "family",
-                    14: "fantasy", 36: "history", 27: "horror", 10402: "music",
-                    9648: "mystery", 10749: "romance", 878: "sci-fi", 53: "thriller",
-                    10752: "war", 37: "western"
-                }
-                query = genre_keywords.get(genre_id, "movie")
-                
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 's': query, 'y': year, 'page': page, 'type': 'movie'}, timeout=5)
-            if r.status_code == 200 and r.json().get('Search'):
-                movies = []
-                for item in r.json().get('Search'):
-                    detail = fetch_movie_details_from_omdb(item.get('imdbID'))
-                    if detail:
-                        movies.append(map_omdb_detail_to_tmdb(detail))
-                total = int(r.json().get('totalResults', 0))
-                return jsonify({
-                    'results': movies,
-                    'total_results': total,
-                    'total_pages': (total + 9) // 10
-                })
-            return jsonify({'results': [], 'total_results': 0, 'total_pages': 0})
-            
-        # 6. MOVIE DETAIL
-        import re
-        movie_detail_match = re.match(r'^movie/(\d+)$', endpoint)
-        if movie_detail_match:
-            movie_id = int(movie_detail_match.group(1))
-            imdb_id = format_id_to_imdb_id(movie_id)
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id, 'plot': 'full'}, timeout=5)
-            if r.status_code == 200 and r.json().get('Response') == 'True':
-                return jsonify(map_omdb_detail_to_tmdb(r.json()))
-            return jsonify({'error': 'Film non trovato'}), 404
-            
-        # 7. MOVIE CREDITS
-        movie_credits_match = re.match(r'^movie/(\d+)/credits$', endpoint)
-        if movie_credits_match:
-            movie_id = int(movie_credits_match.group(1))
-            imdb_id = format_id_to_imdb_id(movie_id)
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id}, timeout=5)
-            if r.status_code == 200 and r.json().get('Response') == 'True':
-                d = r.json()
-                actors = d.get('Actors', '')
-                actor_names = actors.split(', ') if actors and actors != 'N/A' else []
-                cast = []
-                for name in actor_names:
-                    actor_id = hash_string_to_int(name)
-                    person_cache[actor_id] = name
-                    cast.append({
-                        'id': actor_id,
-                        'name': name,
-                        'character': 'Actor',
-                        'profile_path': None
-                    })
-                crew = []
-                director = d.get('Director', '')
-                if director and director != 'N/A':
-                    for name in director.split(', '):
-                        crew.append({'id': hash_string_to_int(name), 'name': name, 'job': 'Director'})
-                writer = d.get('Writer', '')
-                if writer and writer != 'N/A':
-                    for name in writer.split(', '):
-                        crew.append({'id': hash_string_to_int(name), 'name': name, 'job': 'Writer'})
-                return jsonify({'cast': cast, 'crew': crew})
-            return jsonify({'error': 'Film non trovato'}), 404
-
-        # 8. MOVIE VIDEOS
-        movie_videos_match = re.match(r'^movie/(\d+)/videos$', endpoint)
-        if movie_videos_match:
-            return jsonify({'results': []})
-
-        # 9. MOVIE SIMILAR
-        movie_similar_match = re.match(r'^movie/(\d+)/similar$', endpoint)
-        if movie_similar_match:
-            movie_id = int(movie_similar_match.group(1))
-            imdb_id = format_id_to_imdb_id(movie_id)
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id}, timeout=5)
-            if r.status_code == 200 and r.json().get('Response') == 'True':
-                genre_str = r.json().get('Genre', '')
-                genre_list = genre_str.split(', ') if genre_str else []
-                primary_genre = genre_list[0] if genre_list else 'movie'
-                sr = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 's': primary_genre, 'type': 'movie'}, timeout=5)
-                if sr.status_code == 200 and sr.json().get('Search'):
-                    movies = []
-                    for item in sr.json().get('Search')[:5]:
-                        detail = fetch_movie_details_from_omdb(item.get('imdbID'))
-                        if detail:
-                            movies.append(map_omdb_detail_to_tmdb(detail))
-                    return jsonify({'results': movies})
-            return jsonify({'results': []})
-
-        # 10. COLLECTION
-        collection_match = re.match(r'^collection/(\d+)$', endpoint)
-        if collection_match:
-            collection_id = int(collection_match.group(1))
-            imdb_id = format_id_to_imdb_id(collection_id)
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id}, timeout=5)
-            if r.status_code == 200 and r.json().get('Response') == 'True':
-                franchise = get_franchise_query(r.json().get('Title'))
-                if franchise:
-                    sr = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 's': franchise, 'type': 'movie'}, timeout=5)
-                    if sr.status_code == 200 and sr.json().get('Search'):
-                        movies = []
-                        for item in sr.json().get('Search'):
-                            detail = fetch_movie_details_from_omdb(item.get('imdbID'))
-                            if detail:
-                                movies.append(map_omdb_detail_to_tmdb(detail))
-                        movies.sort(key=lambda m: m.get('release_date', ''))
-                        return jsonify({
-                            'id': collection_id,
-                            'name': f"{franchise} Collection",
-                            'parts': movies
-                        })
-            return jsonify({'id': collection_id, 'name': 'Collection', 'parts': []})
-
-        # 11. RELEASE DATES
-        release_dates_match = re.match(r'^movie/(\d+)/release_dates$', endpoint)
-        if release_dates_match:
-            movie_id = int(release_dates_match.group(1))
-            imdb_id = format_id_to_imdb_id(movie_id)
-            r = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 'i': imdb_id}, timeout=5)
-            if r.status_code == 200 and r.json().get('Response') == 'True':
-                cleaned_date = clean_release_date(r.json().get('Released'), r.json().get('Year'))
-                date_iso = f"{cleaned_date}T00:00:00.000Z" if cleaned_date != 'N/A' else None
-                return jsonify({
-                    'results': [
-                        {
-                            'iso_3166_1': 'US',
-                            'release_dates': [{'type': 3, 'release_date': date_iso}] if date_iso else []
-                        },
-                        {
-                            'iso_3166_1': 'IT',
-                            'release_dates': [{'type': 3, 'release_date': date_iso}] if date_iso else []
-                        }
-                    ]
-                })
-            return jsonify({'results': []})
-
-        # 12. SEARCH PERSON
-        if endpoint == 'search/person':
-            query = params.get('query')
-            if not query:
-                return jsonify({'results': []})
-            person_id = hash_string_to_int(query)
-            person_cache[person_id] = query
-            return jsonify({
-                'results': [
-                    {
-                        'id': person_id,
-                        'name': query,
-                        'profile_path': None
-                    }
-                ]
-            })
-
-        # 13. PERSON DETAIL
-        person_detail_match = re.match(r'^person/(\d+)$', endpoint)
-        if person_detail_match:
-            person_id = int(person_detail_match.group(1))
-            name = person_cache.get(person_id, f"Actor #{person_id}")
-            return jsonify({
-                'id': person_id,
-                'name': name,
-                'biography': '',
-                'birthday': None,
-                'place_of_birth': None,
-                'profile_path': None
-            })
-
-        # 14. PERSON MOVIE CREDITS
-        person_movie_credits_match = re.match(r'^person/(\d+)/movie_credits$', endpoint)
-        if person_movie_credits_match:
-            person_id = int(person_movie_credits_match.group(1))
-            name = person_cache.get(person_id)
-            if name:
-                sr = http_requests.get('http://www.omdbapi.com/', params={'apikey': OMDB_API_KEY, 's': name, 'type': 'movie'}, timeout=5)
-                if sr.status_code == 200 and sr.json().get('Search'):
-                    movies = []
-                    for item in sr.json().get('Search'):
-                        detail = fetch_movie_details_from_omdb(item.get('imdbID'))
-                        if detail:
-                            movies.append(map_omdb_detail_to_tmdb(detail))
-                    return jsonify({'cast': movies})
-            return jsonify({'cast': []})
-
-        # 15. PERSON POPULAR
-        if endpoint == 'person/popular':
-            POPULAR_ACTORS = [
-                "Leonardo DiCaprio", "Brad Pitt", "Scarlett Johansson", "Tom Hanks", 
-                "Robert Downey Jr.", "Johnny Depp", "Jennifer Lawrence", "Matt Damon", 
-                "Morgan Freeman", "Meryl Streep", "Christian Bale", "Al Pacino"
-            ]
-            results = []
-            for name in POPULAR_ACTORS:
-                actor_id = hash_string_to_int(name)
-                person_cache[actor_id] = name
-                results.append({
-                    'id': actor_id,
-                    'name': name,
-                    'profile_path': None,
-                    'known_for': []
-                })
-            return jsonify({'results': results, 'total_pages': 1, 'page': 1})
-
-        # Fallback to TMDB
-        target_url = f'{TMDB_BASE_URL}/{endpoint}'
-        print(f"⚠️ [OMDb Proxy Fallback] Endpoint sconosciuto, inoltro a TMDB: {target_url}")
-        params['api_key'] = TMDB_API_KEY
-        resp = http_requests.get(target_url, params=params, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        return jsonify(resp.json()), resp.status_code
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        resp = http_requests.get(target_url, params=params, headers=headers, timeout=10)
+        print(f"✅ [TMDb Proxy] Risposta ricevuta: Stato {resp.status_code}")
         
+        if resp.status_code != 200:
+            return jsonify(resp.json()), resp.status_code
+            
+        data = resp.json()
+        if data:
+            # Caso 1: Array di risultati (liste di film / persone)
+            if 'results' in data and isinstance(data['results'], list):
+                filtered_results = []
+                for m in data['results']:
+                    if m and m.get('id'):
+                        if not is_movie_object(m):
+                            if is_valid_actor(m):
+                                filtered_results.append(m)
+                        elif is_movie_in_italy(m['id'], m.get('original_language')) and is_valid_title(m.get('title'), m.get('original_title')):
+                            filtered_results.append(m)
+                data['results'] = filtered_results
+            # Caso 2: Parti di una collezione
+            elif 'parts' in data and isinstance(data['parts'], list):
+                filtered_parts = []
+                for m in data['parts']:
+                    if m and m.get('id'):
+                        if not is_movie_object(m):
+                            if is_valid_actor(m):
+                                filtered_parts.append(m)
+                        elif is_movie_in_italy(m['id'], m.get('original_language')) and is_valid_title(m.get('title'), m.get('original_title')):
+                            filtered_parts.append(m)
+                data['parts'] = filtered_parts
+            # Caso 3: Crediti cast/crew di un attore / film
+            elif ('cast' in data and isinstance(data['cast'], list)) or ('crew' in data and isinstance(data['crew'], list)):
+                if 'cast' in data and isinstance(data['cast'], list):
+                    filtered_cast = []
+                    for m in data['cast']:
+                        if m and m.get('id'):
+                            if not is_movie_object(m):
+                                if is_valid_actor(m):
+                                    filtered_cast.append(m)
+                            elif is_movie_in_italy(m['id'], m.get('original_language')) and is_valid_title(m.get('title'), m.get('original_title')):
+                                filtered_cast.append(m)
+                    data['cast'] = filtered_cast
+                if 'crew' in data and isinstance(data['crew'], list):
+                    filtered_crew = []
+                    for m in data['crew']:
+                        if m and m.get('id'):
+                            if not is_movie_object(m):
+                                if is_valid_actor(m):
+                                    filtered_crew.append(m)
+                            elif is_movie_in_italy(m['id'], m.get('original_language')) and is_valid_title(m.get('title'), m.get('original_title')):
+                                filtered_crew.append(m)
+                    data['crew'] = filtered_crew
+            # Caso 4: Dettaglio singolo film
+            elif re.match(r'^movie/\d+$', endpoint):
+                if data.get('id') and is_movie_object(data):
+                    if not is_movie_in_italy(data['id'], data.get('original_language')) or not is_valid_title(data.get('title'), data.get('original_title')):
+                        print(f"🚫 [TMDb Proxy] Film ID {data['id']} filtrato (non in Italia o titolo non valido).")
+                        return jsonify({'success': False, 'message': 'Film non disponibile in Italia o lingua non supportata.'}), 404
+            # Caso 5: Dettaglio singolo attore
+            elif re.match(r'^person/\d+$', endpoint):
+                if data.get('id') and not is_valid_actor(data):
+                    print(f"🚫 [TMDb Proxy] Attore ID {data.get('id')} filtrato (nome con caratteri non latini).")
+                    return jsonify({'success': False, 'message': 'Attore non supportato a sistema.'}), 404
+        
+        return jsonify(data), resp.status_code
     except Exception as e:
-        print(f"❌ [OMDb Proxy] ERRORE: {str(e)}")
+        print(f"❌ [TMDb Proxy] ERRORE: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -608,6 +283,152 @@ def register():
     except Exception as e:
         print(f"❌ [Auth Register] ERRORE: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+# =========================================
+# RECUPERO PASSWORD (FORGOT & RESET)
+# =========================================
+
+RESET_TOKENS_PATH = 'password_resets.json'
+
+def load_password_resets():
+    if os.path.exists(RESET_TOKENS_PATH):
+        try:
+            with open(RESET_TOKENS_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_password_resets(data):
+    try:
+        with open(RESET_TOKENS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"❌ Errore salvataggio reset tokens: {str(e)}")
+
+def clean_expired_tokens():
+    import time
+    now_ms = int(time.time() * 1000)
+    data = load_password_resets()
+    changed = False
+    for k in list(data.keys()):
+        if data[k].get('expiresAt', 0) < now_ms:
+            del data[k]
+            changed = True
+    if changed:
+        save_password_resets(data)
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    body = request.get_json() or {}
+    email = (body.get('email') or '').strip().lower()
+    print(f"🔐 [Forgot Password] Richiesta recupero per: {email}")
+
+    if not email or '@' not in email:
+        return jsonify({'success': False, 'message': 'Inserisci un indirizzo email valido.'}), 400
+
+    clean_expired_tokens()
+
+    target_user = None
+    try:
+        resp = http_requests.get(
+            f'{SUPABASE_URL}/rest/v1/users',
+            headers=supabase_headers(),
+            params={'email': f'ilike.{email}', 'select': 'id,username,email'},
+            timeout=8
+        )
+        if resp.status_code == 200 and resp.json():
+            target_user = resp.json()[0]
+    except Exception as e:
+        print(f"⚠️ [Forgot Password] Errore Supabase: {str(e)}")
+
+    if not target_user and os.path.exists('user_profiles.json'):
+        try:
+            with open('user_profiles.json', 'r', encoding='utf-8') as f:
+                profiles = json.load(f)
+                for uname, udata in profiles.items():
+                    if udata.get('email', '').lower() == email:
+                        target_user = {'username': uname, 'email': udata.get('email')}
+                        break
+        except Exception:
+            pass
+
+    if not target_user:
+        return jsonify({'success': False, 'message': 'Nessun account trovato associato a questa email.'}), 404
+
+    import secrets
+    import time
+    reset_token = secrets.token_hex(32)
+    resets = load_password_resets()
+    resets[reset_token] = {
+        'username': target_user['username'],
+        'email': target_user.get('email') or email,
+        'expiresAt': int(time.time() * 1000) + 3600000
+    }
+    save_password_resets(resets)
+
+    host = request.host
+    protocol = request.scheme
+    reset_url = f"{protocol}://{host}/reset-password.html?token={reset_token}"
+    print(f"🔗 [Forgot Password] Link generato: {reset_url}")
+
+    return jsonify({
+        'success': True,
+        'message': 'Richiesta di reset registrata! Controlla la tua email.',
+        'resetUrl': reset_url
+    })
+
+@app.route('/api/auth/verify-reset-token', methods=['GET'])
+def verify_reset_token():
+    token = request.args.get('token', '').strip()
+    clean_expired_tokens()
+    resets = load_password_resets()
+    
+    if not token or token not in resets:
+        return jsonify({'success': False, 'message': 'Il link di recupero non è valido o è scaduto.'}), 400
+
+    token_data = resets[token]
+    return jsonify({
+        'success': True,
+        'username': token_data.get('username'),
+        'email': token_data.get('email')
+    })
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    body = request.get_json() or {}
+    token = body.get('token', '').strip()
+    new_password = (body.get('new_password') or '').strip()
+
+    clean_expired_tokens()
+    resets = load_password_resets()
+
+    if not token or token not in resets:
+        return jsonify({'success': False, 'message': 'Il link di recupero non è più valido o è scaduto.'}), 400
+
+    if len(new_password) < 4:
+        return jsonify({'success': False, 'message': 'La nuova password deve contenere almeno 4 caratteri.'}), 400
+
+    username = resets[token]['username']
+    import hashlib
+    new_hash = hashlib.sha512(new_password.encode('utf-8')).hexdigest()
+
+    try:
+        http_requests.patch(
+            f'{SUPABASE_URL}/rest/v1/users',
+            headers=supabase_headers(),
+            params={'username': f'eq.{username}'},
+            json={'password_hash': new_hash},
+            timeout=10
+        )
+    except Exception as e:
+        print(f"⚠️ [Password Reset] Errore aggiornamento Supabase: {str(e)}")
+
+    del resets[token]
+    save_password_resets(resets)
+
+    return jsonify({'success': True, 'message': 'Password modificata con successo!'})
 
 
 # =========================================
@@ -985,9 +806,8 @@ def github_webhook():
 # =========================================
 # AVVIO SERVER
 # =========================================
-# AVVIO SERVER
-# =========================================
 
 if __name__ == '__main__':
-    print('🎬 Stoike Server avviato su http://localhost:5001')
-    app.run(debug=True, port=5001)
+    port = int(os.environ.get('PORT', 5001))
+    print(f'🎬 Stoike Server avviato su http://0.0.0.0:{port}')
+    app.run(host='0.0.0.0', port=port)
