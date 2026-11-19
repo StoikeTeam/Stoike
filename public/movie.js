@@ -128,26 +128,77 @@ async function loadMovieDetails(movieId) {
             fetchTMDB(`/movie/${movieId}/similar`)
         ]);
 
-        // 1. Cast
+        // 1. Cast principale e cast completo
         const castContainer = document.getElementById('detail-cast-container');
         const castEl = document.getElementById('detail-cast');
+        const fullCastEl = document.getElementById('detail-cast-full');
+        const fullCastToggle = document.getElementById('cast-full-toggle');
+        const fullCastToggleLabel = document.getElementById('cast-full-toggle-label');
+
         if (credits && credits.cast && credits.cast.length > 0) {
-            let castHTML = '<div class="flex flex-wrap gap-3 mt-3">';
-            const sliceLimit = Math.min(credits.cast.length, 6);
-            credits.cast.slice(0, sliceLimit).forEach(actor => {
-                const photoUrl = actor.profile_path 
-                    ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` 
-                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff`;
-                castHTML += `
+            const actorPhoto = (actor) => actor.profile_path
+                ? `https://image.tmdb.org/t/p/w185${actor.profile_path}`
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff`;
+
+            const escapeText = (value) => String(value || '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+
+            let mainCastHTML = '<div class="flex flex-wrap gap-3 mt-3">';
+            credits.cast.slice(0, 6).forEach(actor => {
+                const photoUrl = actorPhoto(actor);
+                const safeName = escapeText(actor.name);
+                mainCastHTML += `
                     <div onclick="window.location.href='/actors.html?query=${encodeURIComponent(actor.name)}'" class="flex items-center gap-3 bg-surface-container-high border border-outline-variant/20 pr-4 rounded-full overflow-hidden hover:bg-surface-container-highest hover:border-primary-container/30 transition-all duration-300 cursor-pointer transform hover:scale-105 shadow-sm">
-                        <img src="${photoUrl}" alt="${actor.name}" class="w-12 h-12 object-cover" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff'" />
-                        <span class="font-label-md text-label-md text-white font-medium">${actor.name}</span>
+                        <img src="${photoUrl}" alt="${safeName}" class="w-12 h-12 object-cover" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff'" />
+                        <span class="font-label-md text-label-md text-white font-medium">${safeName}</span>
                     </div>
                 `;
             });
-            castHTML += '</div>';
-            castEl.innerHTML = castHTML;
+            mainCastHTML += '</div>';
+            castEl.innerHTML = mainCastHTML;
             castContainer.classList.remove('hidden');
+
+            let fullCastHTML = '';
+            credits.cast.forEach(actor => {
+                const photoUrl = actorPhoto(actor);
+                const safeName = escapeText(actor.name);
+                const safeCharacter = escapeText(actor.character || 'Ruolo non indicato');
+                fullCastHTML += `
+                    <button type="button" onclick="window.location.href='/actors.html?query=${encodeURIComponent(actor.name)}'" class="flex items-center gap-3 w-full text-left bg-surface-container-high/80 border border-outline-variant/20 p-2.5 rounded-xl hover:bg-surface-container-highest hover:border-primary-container/30 transition-all duration-300 group">
+                        <img src="${photoUrl}" alt="${safeName}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff'" />
+                        <span class="min-w-0">
+                            <span class="block text-white font-label-md font-medium truncate group-hover:text-primary-container transition-colors">${safeName}</span>
+                            <span class="block text-on-surface-variant text-xs truncate mt-0.5">${safeCharacter}</span>
+                        </span>
+                    </button>
+                `;
+            });
+
+            if (fullCastEl) fullCastEl.innerHTML = fullCastHTML;
+
+            if (fullCastToggle && credits.cast.length > 6) {
+                fullCastToggle.classList.remove('hidden');
+                if (fullCastToggleLabel) fullCastToggleLabel.innerText = `Cast Completo (${credits.cast.length})`;
+
+                fullCastToggle.onclick = () => {
+                    const isHidden = fullCastEl.classList.contains('hidden');
+                    if (isHidden) {
+                        fullCastEl.classList.remove('hidden');
+                        if (fullCastToggleLabel) fullCastToggleLabel.innerText = 'Riduci cast';
+                        fullCastToggle.querySelector('.material-symbols-outlined')?.classList.replace('groups', 'expand_less');
+                    } else {
+                        fullCastEl.classList.add('hidden');
+                        if (fullCastToggleLabel) fullCastToggleLabel.innerText = `Cast Completo (${credits.cast.length})`;
+                        fullCastToggle.querySelector('.material-symbols-outlined')?.classList.replace('expand_less', 'groups');
+                    }
+                };
+            } else if (fullCastToggle) {
+                fullCastToggle.classList.add('hidden');
+            }
         } else {
             castContainer.classList.add('hidden');
         }
