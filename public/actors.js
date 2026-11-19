@@ -159,14 +159,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Step 1: Search for person matching the query
             const searchData = await fetchTMDB(`/search/person?query=${encodeURIComponent(correctedQuery)}`);
             
-            if (!searchData || !searchData.results || searchData.results.length === 0) {
+            const people = searchData && Array.isArray(searchData.results)
+                ? searchData.results.filter(person =>
+                    person &&
+                    person.media_type !== 'movie' &&
+                    typeof person.name === 'string' &&
+                    person.name.trim()
+                )
+                : [];
+            if (people.length === 0) {
                 loadingEl.classList.add('hidden');
                 errorEl.classList.remove('hidden');
                 return;
             }
 
             // Prioritizza i risultati che contengono una foto profilo e poi ordina per popolarità
-            const sortedResults = searchData.results.sort((a, b) => {
+            const sortedResults = people.sort((a, b) => {
                 const aHasPhoto = a.profile_path ? 1 : 0;
                 const bHasPhoto = b.profile_path ? 1 : 0;
                 if (aHasPhoto !== bHasPhoto) {
@@ -622,9 +630,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Auto trigger search if a query URL parameter exists (e.g. redirected from details page)
     const params = new URLSearchParams(window.location.search);
     const initialQuery = params.get('query');
-    if (initialQuery) {
-        const decodedQuery = decodeURIComponent(initialQuery);
-        if (searchInput) searchInput.value = decodedQuery;
+    const decodedQuery = initialQuery ? decodeURIComponent(initialQuery) : '';
+    if (searchInput) searchInput.value = decodedQuery;
+    if (decodedQuery) {
         executeActorSearch(decodedQuery);
     } else {
         // No query param: load popular/trending actors on page open

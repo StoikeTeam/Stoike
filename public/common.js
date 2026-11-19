@@ -386,8 +386,10 @@ async function fetchSuggestionsGlobal() {
 
     const [rawData, personData] = await Promise.all([moviePromise, personPromise]);
     
-    const movieResults = (rawData && rawData.results) ? rawData.results.slice(0, 5) : [];
-    const personResults = (personData && personData.results) ? personData.results.filter(p => p.profile_path).slice(0, 3) : [];
+    const movieResults = getTMDBMovieResults(rawData).slice(0, 5);
+    const personResults = (personData && personData.results)
+        ? personData.results.filter(p => p && p.profile_path && p.media_type !== 'movie' && typeof p.name === 'string' && p.name.trim()).slice(0, 3)
+        : [];
 
     if (movieResults.length > 0 || personResults.length > 0) {
         suggestionsBox.innerHTML = '';
@@ -1466,6 +1468,7 @@ function setupMobileSearchOverlayLogic() {
     // Hide mobile suggestions on click outside
     document.addEventListener('click', (e) => {
         const overlay = document.getElementById('mobile-search-overlay');
+        const suggestionsBox = document.getElementById('mobile-search-suggestions');
         if (overlay && suggestionsBox && !overlay.contains(e.target) && !e.target.closest('#mobile-search-suggestions')) {
             suggestionsBox.classList.add('hidden');
             suggestionsBox.classList.remove('flex');
@@ -1536,7 +1539,7 @@ function setupMobileSearchOverlayLogic() {
             e.stopPropagation();
             yearInput.value = '';
             mypDropdown.classList.add('hidden');
-            mypDropdown.classList.remove('flex');
+                       mypDropdown.classList.remove('flex');
             triggerMobileSearchSuggest();
         });
 
@@ -1631,8 +1634,10 @@ async function fetchMobileSuggestions() {
 
     const [rawData, personData] = await Promise.all([moviePromise, personPromise]);
     
-    const movieResults = (rawData && rawData.results) ? rawData.results.slice(0, 5) : [];
-    const personResults = (personData && personData.results) ? personData.results.filter(p => p.profile_path).slice(0, 3) : [];
+    const movieResults = getTMDBMovieResults(rawData).slice(0, 5);
+    const personResults = (personData && personData.results)
+        ? personData.results.filter(p => p && p.profile_path && p.media_type !== 'movie' && typeof p.name === 'string' && p.name.trim()).slice(0, 3)
+        : [];
 
     if (movieResults.length > 0 || personResults.length > 0) {
         suggestionsBox.innerHTML = '';
@@ -2000,4 +2005,14 @@ function getQueryParam(param, url) {
         }
     }
 })();
+
+function getTMDBMovieResults(data) {
+    if (!data || !Array.isArray(data.results)) return [];
+    return data.results.filter(movie =>
+        movie &&
+        movie.media_type !== 'person' &&
+        typeof movie.title === 'string' &&
+        movie.title.trim()
+    );
+}
 

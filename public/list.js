@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = await fetchTMDB(pagedEndpoint);
         if (data) {
             totalPages = data.total_pages || 1;
-            let results = data.results || [];
+            let results = getTMDBMovieResults(data);
             
             // Ordina i film per rating (vote_average) decrescente se siamo in top_rated o collection
             if (type === 'top_rated' || type === 'collection') {
