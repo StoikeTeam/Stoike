@@ -44,6 +44,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!query) return query;
         
         const famousActors = [
+            "Sydney Sweeney", "Sidney Poitier", "Jenna Ortega", "Anya Taylor-Joy", "Ana de Armas",
+            "Millie Bobby Brown", "Austin Butler", "Barry Keoghan", "Jacob Elordi", "Paul Mescal",
             "Mark Wahlberg", "Arnold Schwarzenegger", "Scarlett Johansson", "Keanu Reeves", 
             "Benedict Cumberbatch", "Leonardo DiCaprio", "Matthew McConaughey", "Jason Statham", 
             "Sylvester Stallone", "Christian Bale", "Cillian Murphy", "Robert Downey Jr.", 
@@ -322,20 +324,173 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Auto-suggest Dropdown logic for Actor Search (come per la ricerca film)
+    const actorSuggestionsBox = document.getElementById('actor-search-suggestions');
+    let actorSuggestTimeout = null;
+
+    async function fetchActorSuggestions(query) {
+        if (!actorSuggestionsBox) return;
+        const q = (query || '').trim();
+        if (!q) {
+            actorSuggestionsBox.classList.add('hidden');
+            actorSuggestionsBox.classList.remove('flex');
+            return;
+        }
+
+        actorSuggestionsBox.innerHTML = `
+            <div class="p-4 text-center font-label-md text-on-surface-variant flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[18px] animate-spin text-primary-container">sync</span>
+                <span>Ricerca suggerimenti...</span>
+            </div>
+        `;
+        actorSuggestionsBox.classList.remove('hidden');
+        actorSuggestionsBox.classList.add('flex');
+
+        try {
+            // Ricerca su TMDb per persone
+            const res = await fetchTMDB(`/search/person?query=${encodeURIComponent(q)}`);
+            let results = (res && res.results) ? res.results : [];
+
+            // Se la query ha un'ortografia alternativa (es. "sidney" -> "Sydney Sweeney") o poche risposte, unisci i risultati
+            const corrected = getCorrectedActorName(q);
+            if (corrected && corrected.toLowerCase() !== q.toLowerCase()) {
+                const altRes = await fetchTMDB(`/search/person?query=${encodeURIComponent(corrected)}`);
+                if (altRes && altRes.results && altRes.results.length > 0) {
+                    const existingIds = new Set(results.map(r => r.id));
+                    altRes.results.forEach(r => {
+                        if (!existingIds.has(r.id)) {
+                            results.push(r);
+                            existingIds.add(r.id);
+                        }
+                    });
+                }
+            }
+
+            // Ordina: prima chi ha una foto profilo, poi per popolarità
+            const validResults = results
+                .filter(p => p && p.name)
+                .sort((a, b) => {
+                    const aPhoto = a.profile_path ? 1 : 0;
+                    const bPhoto = b.profile_path ? 1 : 0;
+                    if (aPhoto !== bPhoto) return bPhoto - aPhoto;
+                    return (b.popularity || 0) - (a.popularity || 0);
+                });
+
+            if (validResults.length === 0) {
+                actorSuggestionsBox.innerHTML = `
+                    <div class="p-4 text-center font-label-md text-on-surface-variant">
+                        Nessun attore trovato per "${q}"
+                    </div>
+                `;
+                return;
+            }
+
+            actorSuggestionsBox.innerHTML = '';
+            validResults.slice(0, 8).forEach(actor => {
+                const photoUrl = actor.profile_path
+                    ? `https://image.tmdb.org/t/p/w185${actor.profile_path}`
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff`;
+
+                let knownForText = '';
+                if (actor.known_for && Array.isArray(actor.known_for)) {
+                    const titles = actor.known_for
+                        .map(k => k.title || k.name)
+                        .filter(Boolean)
+                        .slice(0, 3);
+                    if (titles.length > 0) {
+                        knownForText = titles.join(', ');
+                    }
+                }
+                const department = actor.known_for_department 
+                    ? (actor.known_for_department === 'Acting' ? 'Recitazione' : actor.known_for_department) 
+                    : 'Attore / Cast';
+                const subText = knownForText ? `${department} • ${knownForText}` : department;
+
+                const item = document.createElement('div');
+                item.className = 'flex items-center gap-3.5 p-3 hover:bg-surface-container-high cursor-pointer transition-colors border-b border-outline-variant/10 last:border-0 group';
+                item.innerHTML = `
+                    <img src="${photoUrl}" alt="${actor.name}" class="w-11 h-11 object-cover rounded-full border border-white/10 shadow-sm flex-shrink-0" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(actor.name)}&background=2d2d2d&color=fff'" />
+                    <div class="flex-1 min-w-0">
+                        <div class="font-label-md text-white group-hover:text-primary-container transition-colors truncate font-semibold">${actor.name}</div>
+                        <div class="font-label-sm text-on-surface-variant truncate text-xs">${subText}</div>
+                    </div>
+                    <span class="material-symbols-outlined text-on-surface-variant/40 group-hover:text-primary-container text-[18px] transition-colors pr-1">arrow_forward</span>
+                `;
+
+                item.addEventListener('click', () => {
+                    actorSuggestionsBox.classList.add('hidden');
+                    actorSuggestionsBox.classList.remove('flex');
+                    if (searchInput) searchInput.value = actor.name;
+                    // Mostra loading e carica direttamente l'attore selezionato
+                    profileCard.classList.add('hidden');
+                    moviesSection.classList.add('hidden');
+                    errorEl.classList.add('hidden');
+                    loadingEl.classList.remove('hidden');
+                    if (popularSection) popularSection.classList.add('hidden');
+                    loadActorDetails(actor.id);
+                });
+
+                actorSuggestionsBox.appendChild(item);
+            });
+
+        } catch (err) {
+            console.error('Errore suggerimenti attori:', err);
+            actorSuggestionsBox.innerHTML = `<div class="p-4 text-center font-label-md text-red-400">Errore nel caricamento</div>`;
+        }
+    }
+
     // Set search event listeners
     if (searchBtn && searchInput) {
         searchBtn.addEventListener('click', () => {
+            if (actorSuggestionsBox) {
+                actorSuggestionsBox.classList.add('hidden');
+                actorSuggestionsBox.classList.remove('flex');
+            }
             const query = searchInput.value.trim();
             executeActorSearch(query);
         });
 
+        searchInput.addEventListener('input', () => {
+            clearTimeout(actorSuggestTimeout);
+            const query = searchInput.value.trim();
+            if (!query) {
+                if (actorSuggestionsBox) {
+                    actorSuggestionsBox.classList.add('hidden');
+                    actorSuggestionsBox.classList.remove('flex');
+                }
+                return;
+            }
+            actorSuggestTimeout = setTimeout(() => {
+                fetchActorSuggestions(query);
+            }, 250);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            const query = searchInput.value.trim();
+            if (query) {
+                fetchActorSuggestions(query);
+            }
+        });
+
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
+                if (actorSuggestionsBox) {
+                    actorSuggestionsBox.classList.add('hidden');
+                    actorSuggestionsBox.classList.remove('flex');
+                }
                 const query = searchInput.value.trim();
                 executeActorSearch(query);
             }
         });
     }
+
+    // Nascondi il dropdown se si clicca fuori dall'input o dal dropdown
+    document.addEventListener('click', (e) => {
+        if (actorSuggestionsBox && !actorSuggestionsBox.contains(e.target) && e.target !== searchInput) {
+            actorSuggestionsBox.classList.add('hidden');
+            actorSuggestionsBox.classList.remove('flex');
+        }
+    });
 
     // Render a single actor card for the popular grid
     function renderActorCard(person) {

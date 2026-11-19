@@ -380,11 +380,48 @@ async function fetchSuggestionsGlobal() {
         endpoint = `/discover/movie?primary_release_year=${encodeURIComponent(year)}&sort_by=popularity.desc`;
     }
     
-    const rawData = await fetchTMDB(endpoint);
+    // Esegui ricerca film e contemporaneamente ricerca attori (se query testuale)
+    const moviePromise = fetchTMDB(endpoint).catch(() => null);
+    const personPromise = (query && !year) ? fetchTMDB(`/search/person?query=${encodeURIComponent(query)}`).catch(() => null) : Promise.resolve(null);
+
+    const [rawData, personData] = await Promise.all([moviePromise, personPromise]);
     
-    if (rawData && rawData.results && rawData.results.length > 0) {
+    const movieResults = (rawData && rawData.results) ? rawData.results.slice(0, 5) : [];
+    const personResults = (personData && personData.results) ? personData.results.filter(p => p.profile_path).slice(0, 3) : [];
+
+    if (movieResults.length > 0 || personResults.length > 0) {
         suggestionsBox.innerHTML = '';
-        rawData.results.slice(0, 5).forEach(m => {
+
+        // Sezione Attori trovati (se presenti)
+        if (personResults.length > 0) {
+            personResults.forEach(p => {
+                const photoUrl = `https://image.tmdb.org/t/p/w185${p.profile_path}`;
+                const item = document.createElement('div');
+                item.className = 'flex items-center gap-3 p-3 hover:bg-surface-container-high cursor-pointer transition-colors border-b border-outline-variant/10 group';
+                item.innerHTML = `
+                    <img src="${photoUrl}" class="w-10 h-10 object-cover rounded-full shadow-sm border border-white/10" alt="${p.name}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=2d2d2d&color=fff'">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-label-md text-white group-hover:text-primary-container transition-colors truncate font-semibold">${p.name}</div>
+                        <div class="font-label-sm text-primary-container text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[13px]">person</span>
+                            <span>Attore / Cast</span>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-on-surface-variant/40 group-hover:text-primary-container text-[16px] transition-colors">arrow_forward</span>
+                `;
+                item.addEventListener('click', () => {
+                    suggestionsBox.classList.add('hidden');
+                    suggestionsBox.classList.remove('flex');
+                    if (input) input.value = '';
+                    if (yearInput) yearInput.value = '';
+                    window.location.href = `/actors.html?query=${encodeURIComponent(p.name)}`;
+                });
+                suggestionsBox.appendChild(item);
+            });
+        }
+
+        // Sezione Film trovati
+        movieResults.forEach(m => {
             const movie = mapTMDBMovie(m);
             const item = document.createElement('div');
             item.className = 'flex items-center gap-3 p-3 hover:bg-surface-container-high cursor-pointer transition-colors border-b border-outline-variant/10 last:border-0';
@@ -1589,11 +1626,48 @@ async function fetchMobileSuggestions() {
         endpoint = `/discover/movie?primary_release_year=${encodeURIComponent(year)}&sort_by=popularity.desc`;
     }
     
-    const rawData = await fetchTMDB(endpoint);
+    const moviePromise = fetchTMDB(endpoint).catch(() => null);
+    const personPromise = (query && !year) ? fetchTMDB(`/search/person?query=${encodeURIComponent(query)}`).catch(() => null) : Promise.resolve(null);
+
+    const [rawData, personData] = await Promise.all([moviePromise, personPromise]);
     
-    if (rawData && rawData.results && rawData.results.length > 0) {
+    const movieResults = (rawData && rawData.results) ? rawData.results.slice(0, 5) : [];
+    const personResults = (personData && personData.results) ? personData.results.filter(p => p.profile_path).slice(0, 3) : [];
+
+    if (movieResults.length > 0 || personResults.length > 0) {
         suggestionsBox.innerHTML = '';
-        rawData.results.slice(0, 5).forEach(m => {
+
+        // Suggerimenti Attori
+        if (personResults.length > 0) {
+            personResults.forEach(p => {
+                const photoUrl = `https://image.tmdb.org/t/p/w185${p.profile_path}`;
+                const item = document.createElement('div');
+                item.className = 'flex items-center gap-3 p-3 hover:bg-surface-container-high cursor-pointer transition-colors border-b border-outline-variant/10 group';
+                item.innerHTML = `
+                    <img src="${photoUrl}" class="w-10 h-10 object-cover rounded-full shadow-sm border border-white/10" alt="${p.name}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=2d2d2d&color=fff'">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-label-md text-white group-hover:text-primary-container transition-colors truncate font-semibold">${p.name}</div>
+                        <div class="font-label-sm text-primary-container text-xs flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[13px]">person</span>
+                            <span>Attore / Cast</span>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-on-surface-variant/40 group-hover:text-primary-container text-[16px] transition-colors">arrow_forward</span>
+                `;
+                item.addEventListener('click', () => {
+                    suggestionsBox.classList.add('hidden');
+                    suggestionsBox.classList.remove('flex');
+                    if (input) input.value = '';
+                    if (yearInput) yearInput.value = '';
+                    closeMobileSearchOverlay();
+                    window.location.href = `/actors.html?query=${encodeURIComponent(p.name)}`;
+                });
+                suggestionsBox.appendChild(item);
+            });
+        }
+
+        // Suggerimenti Film
+        movieResults.forEach(m => {
             const movie = mapTMDBMovie(m);
             const item = document.createElement('div');
             item.className = 'flex items-center gap-3 p-3 hover:bg-surface-container-high cursor-pointer transition-colors border-b border-outline-variant/10 last:border-0';

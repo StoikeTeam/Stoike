@@ -168,14 +168,43 @@ function setupHeroEvents() {
         });
     }
 
-    // Add to list button click handler (stops propagation)
-    const addBtn = heroSection.querySelector('button:not(#hero-watch-btn)');
+    // Add to list / Save button click handler (stops propagation)
+    const addBtn = document.getElementById('hero-add-btn');
     if (addBtn) {
         addBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            // Optional: placeholder watchlist feedback
+            const currentMovie = heroMovies[currentHeroIdx];
+            if (currentMovie && typeof handleSaveMovie === 'function') {
+                handleSaveMovie(e, currentMovie.id, currentMovie.title, currentMovie.poster_url);
+            }
         });
     }
+
+    // Touch swipe gesture for mobile (adatto per smartphone)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    heroSection.addEventListener('touchstart', (e) => {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    heroSection.addEventListener('touchend', (e) => {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touchEndX = e.changedTouches[0].screenX;
+        const touchEndY = e.changedTouches[0].screenY;
+        const diffX = touchEndX - touchStartX;
+        const diffY = touchEndY - touchStartY;
+
+        // Movimento orizzontale dominante e superiore a 40px
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 40) {
+            if (diffX < 0) {
+                nextMovie();
+            } else {
+                prevMovie();
+            }
+        }
+    }, { passive: true });
 
     // Prev / Next button manual skip handlers (stops propagation)
     const prevBtn = document.getElementById('hero-prev-btn');
