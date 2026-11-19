@@ -1223,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (response.ok && data.success) {
                     if (statusBox) {
                         statusBox.className = 'px-4 py-3 rounded-lg border font-body-md text-body-md transition-all duration-300 bg-green-500/10 border-green-500/30 text-green-200';
-                        statusBox.innerHTML = `<strong>Successo!</strong> Segnalazione salvata. Grazie per aver migliorato Stoike!`;
+                        statusBox.innerHTML = `<strong>Successo!</strong> Segnalazione salvata su GitHub.<br><a href="${data.issue_url}" target="_blank" rel="noopener noreferrer" class="underline">Apri la issue #${data.issue_url?.split('/').pop() || ''}</a>`;
                     }
 
                     sForm.reset();

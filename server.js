@@ -1312,7 +1312,6 @@ app.get('/api/notifications/:username', async (req, res) => {
     }
 });
 
-
 // =========================================
 // MOVIE REMINDERS API (Supabase integration)
 // =========================================
@@ -1536,17 +1535,18 @@ app.post('/api/report-bug', async (req, res) => {
         }
     }
 
-    // Credenziali GitHub (con supporto a token specifici per utente)
-    let githubToken = process.env.GITHUB_TOKEN;
+    // Credenziali GitHub
+    let githubToken = (process.env.GITHUB_TOKEN || '').trim();
     if (username) {
-        const envKey = `GITHUB_TOKEN_${username.toUpperCase()}`;
-        if (process.env[envKey]) {
-            githubToken = process.env[envKey];
+        const safeUsername = String(username).trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        const envKey = `GITHUB_TOKEN_${safeUsername}`;
+        if (process.env[envKey]?.trim()) {
+            githubToken = process.env[envKey].trim();
             console.log(`🔑 [GitHub API] Utilizzo token specifico per l'utente ${username} (${envKey})`);
         }
     }
-    const githubOwner = process.env.GITHUB_OWNER;
-    const githubRepo = process.env.GITHUB_REPO;
+    const githubOwner = (process.env.GITHUB_OWNER || '').trim();
+    const githubRepo = (process.env.GITHUB_REPO || '').trim();
 
     const issueBody = `# Bug Report
 
@@ -1559,111 +1559,61 @@ ${description}
 ## Informazioni aggiuntive
 - **Utente Stoike**: ${username || 'Anonimo'}
 - **Email utente**: ${email || 'Non inserita'}
-- **Pagina corrente**: ${currentPage}
-- **Browser Info**: ${browserInfo}
+- **Pagina corrente**: ${currentPage || 'Non disponibile'}
+- **Browser Info**: ${browserInfo || 'Non disponibile'}
 `;
 
-    // Funzione helper per salvataggio locale di fallback
-    const saveLocalFallback = () => {
-        try {
-            const localBugsPath = path.join(__dirname, 'bug_reports.json');
-            let bugs = [];
-            if (fs.existsSync(localBugsPath)) {
-                try {
-                    bugs = JSON.parse(fs.readFileSync(localBugsPath, 'utf8'));
-                } catch (e) {
-                    bugs = [];
-                }
-            }
-            const newBug = {
-                id: Date.now(),
-                title: `[Bug Report] ${title}`,
-                body: issueBody,
-                created_at: new Date().toISOString(),
-                status: 'open_local'
-            };
-            bugs.push(newBug);
-            fs.writeFileSync(localBugsPath, JSON.stringify(bugs, null, 2), 'utf8');
-            console.log(`💾 [GitHub API Fallback] Segnalazione bug salvata con successo in locale: ${localBugsPath}`);
-            return true;
-        } catch (localErr) {
-            console.error("❌ [GitHub API Fallback] Errore nel salvataggio locale:", localErr.message);
-            return false;
-        }
-    };
-
-    // Se la configurazione di GitHub manca o è a valore segnaposto (es. "your_github_...")
-    const isPlaceholder = (val) => !val || val.includes('your_github_');
+    const isPlaceholder = (val) => !val || /your[_-]?github_|^github_token_placeholder$/i.test(val);
     if (isPlaceholder(githubToken) || isPlaceholder(githubOwner) || isPlaceholder(githubRepo)) {
-        console.warn("⚠️ [GitHub API] Configurazione incompleta o con segnaposto in .env. Utilizzo del salvataggio locale di fallback.");
-        if (saveLocalFallback()) {
-            return res.json({
-                success: true,
-                message: 'Segnalazione salvata localmente (GitHub API non configurata).',
-                issue_url: '#'
-            });
-        } else {
-            return res.status(500).json({
-                success: false,
-                message: 'Errore di configurazione e salvataggio locale fallito.'
-            });
-        }
+        console.error('❌ [GitHub API] Configurazione incompleta: imposta GITHUB_TOKEN, GITHUB_OWNER e GITHUB_REPO nelle Environment Variables di Render.');
+        return res.status(500).json({
+            success: false,
+            message: 'Il server non è configurato con il token GitHub.'
+        });
     }
 
     console.log(`🚀 [GitHub API] Creazione issue nel repo ${githubOwner}/${githubRepo} per bug: '${title}'...`);
     try {
         const response = await axios.post(
-            `https://api.github.com/repos/${githubOwner}/${githubRepo}/issues`,
+            `https://api.github.com/repos/${encodeURIComponent(githubOwner)}/${encodeURIComponent(githubRepo)}/issues`,
             {
                 title: `[Bug Report] ${title}`,
-                body: issueBody,
-                labels: ['bug', 'user-report']
+                body: issueBody
             },
             {
                 headers: {
-                    'Authorization': `token ${githubToken}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
+                    'Authorization': `Bearer ${githubToken}`,
+                    'Accept': 'application/vnd.github+json',
+                    'X-GitHub-Api-Version': '2022-11-28',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Stoike-Bug-Reporter'
                 },
                 timeout: 10000
             }
         );
 
-        console.log(`✅ [GitHub API] Risposta ricevuta: Stato ${response.status}`);
-        if (response.status === 201) {
-            return res.json({
-                success: true,
-                message: 'Segnalazione creata con successo!',
-                issue_url: response.data.html_url
-            });
-        } else {
-            console.error(`❌ [GitHub API] Creazione fallita, risposta:`, response.data);
-            console.log(`⚠️ Tentativo di salvataggio locale di fallback...`);
-            if (saveLocalFallback()) {
-                return res.json({
-                    success: true,
-                    message: 'Segnalazione salvata localmente (GitHub API non disponibile).',
-                    issue_url: '#'
-                });
-            } else {
-                return res.status(502).json({
-                    success: false,
-                    message: `Errore risposta GitHub API. Stato: ${response.status}`
-                });
-            }
-        }
+        console.log(`✅ [GitHub API] Risposta ricevotta: Stato ${response.status}`);
+        return res.json({
+            success: true,
+            message: 'Segnalazione creata con successo!',
+            issue_url: response.data.html_url
+        });
     } catch (error) {
-        console.error(`❌ [GitHub API] Eccezione di rete:`, error.message);
-        console.log(`⚠️ Tentativo di salvataggio locale di fallback...`);
-        if (saveLocalFallback()) {
-            return res.json({
-                success: true,
-                message: 'Segnalazione salvata localmente (GitHub offline/non autorizzato).',
-                issue_url: '#'
-            });
-        } else {
-            return res.status(500).json({ success: false, message: 'Errore di connessione con le API di GitHub.' });
-        }
+        const status = error.response?.status;
+        const githubMessage = error.response?.data?.message;
+        console.error(`❌ [GitHub API] Creazione fallita${status ? `: Stato ${status}` : ''}:`, githubMessage || error.message);
+
+        let message = 'Impossibile creare la issue su GitHub.';
+        if (status === 401) message = 'Token GitHub non valido o scaduto.';
+        if (status === 403) message = 'GitHub ha rifiutato la richiesta: verifica i permessi Issues del token.';
+        if (status === 404) message = 'Repository GitHub non trovato o token privo di accesso.';
+        if (status === 422) message = 'GitHub ha rifiutato i dati della segnalazione.';
+
+        return res.status(status >= 400 && status < 600 ? status : 502).json({
+            success: false,
+            message,
+            github_error: githubMessage || undefined
+        });
     }
 });
 
