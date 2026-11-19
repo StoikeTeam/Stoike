@@ -175,6 +175,19 @@ def proxy_tmdb(endpoint):
             
         data = resp.json()
         if data:
+            is_movie_endpoint = re.match(r'^(search/movie|discover|trending|movie)(/|$)', endpoint)
+            is_person_endpoint = re.match(r'^(search/person|person)(/|$)', endpoint)
+
+            if is_movie_endpoint and isinstance(data.get('results'), list):
+                data['results'] = [m for m in data['results']
+                    if m and m.get('id') and m.get('media_type') != 'person'
+                    and isinstance(m.get('title'), str) and m['title'].strip()
+                ]
+            elif is_person_endpoint and isinstance(data.get('results'), list):
+                data['results'] = [p for p in data['results']
+                    if p and p.get('id') and p.get('media_type') != 'movie'
+                    and isinstance(p.get('name'), str) and p['name'].strip()
+                ]
             # Caso 1: Array di risultati (liste di film / persone)
             if 'results' in data and isinstance(data['results'], list):
                 filtered_results = []

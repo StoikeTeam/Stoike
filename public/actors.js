@@ -376,7 +376,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Ordina: prima chi ha una foto profilo, poi per popolarità
             const validResults = results
-                .filter(p => p && p.name)
+                .filter(p => p && p.id && p.media_type !== 'movie' &&
+                    typeof p.name === 'string' && p.name.trim())
                 .sort((a, b) => {
                     const aPhoto = a.profile_path ? 1 : 0;
                     const bPhoto = b.profile_path ? 1 : 0;
